@@ -28,7 +28,7 @@ export default function Home() {
 
   const manejarLogin = (e) => {
     e.preventDefault();
-    // CLAVE DE ACCESO MAESTRA (Puedes cambiarla aquí)
+    // CLAVE DE ACCESO MAESTRA
     if (password === "PRUEBA") {
       localStorage.setItem("actarium_auth", "true");
       setAutenticado(true);
@@ -64,59 +64,72 @@ export default function Home() {
   };
 
   // --- PANTALLA DE CARGA INICIAL ---
-  if (cargando) return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-10 h-10 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>;
+  if (cargando) return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>;
 
-  // --- PANTALLA DE LOGIN (SEGURIDAD) ---
+  // --- PANTALLA DE LOGIN (DISEÑO PREMIUM) ---
   if (!autenticado) {
     return (
       <div className="min-h-screen bg-[#0F172A] flex flex-col justify-center items-center font-sans relative overflow-hidden">
-        {/* Decoración de fondo */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#D4AF37] opacity-5 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500 opacity-5 rounded-full blur-3xl"></div>
+        {/* Iluminación Ambiental (Efecto Glow) */}
+        <div className="absolute top-[-15%] left-[-10%] w-[60%] h-[60%] bg-[#D4AF37] opacity-10 rounded-full blur-[120px] pointer-events-none animate-pulse duration-10000"></div>
+        <div className="absolute bottom-[-15%] right-[-10%] w-[60%] h-[60%] bg-blue-600 opacity-10 rounded-full blur-[120px] pointer-events-none"></div>
 
-        <div className="z-10 w-full max-w-md bg-white p-10 rounded-2xl shadow-2xl text-center">
-          <div className="w-16 h-16 border-2 border-[#D4AF37] flex items-center justify-center rounded mx-auto mb-6">
-            <span className="text-[#D4AF37] font-serif font-bold text-3xl">A</span>
+        {/* Tarjeta Principal de Login */}
+        <div className="z-10 w-full max-w-md bg-white/95 backdrop-blur-md p-12 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/20 text-center transform transition-all">
+          
+          {/* Tu Logo Oficial */}
+          <div className="flex justify-center mb-8">
+            <img 
+              src="/logo.png" 
+              alt="Logo Actarium" 
+              className="w-32 h-32 object-contain drop-shadow-xl"
+            />
           </div>
-          <h1 className="text-3xl font-serif tracking-widest text-[#0F172A] mb-2">ACTARIUM</h1>
-          <p className="text-gray-400 text-sm mb-10">Sistema de Automatización Registral</p>
+          
+          <h1 className="text-4xl font-serif tracking-widest text-[#0F172A] mb-2">ACTARIUM</h1>
+          <p className="text-gray-400 text-xs font-bold tracking-[0.2em] mb-10 uppercase">Sistema de Automatización Registral</p>
 
-          <form onSubmit={manejarLogin}>
-            <div className="text-left mb-6">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 block">Clave de Acceso</label>
+          <form onSubmit={manejarLogin} className="space-y-6">
+            <div className="text-left">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block ml-1">Clave de Acceso</label>
               <input 
                 type="password" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className={`w-full p-4 border rounded outline-none text-center tracking-widest text-lg transition-colors ${errorLogin ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300 focus:border-[#D4AF37] bg-gray-50'}`}
+                className={`w-full p-4 border-2 rounded-xl outline-none text-center tracking-[0.5em] text-xl transition-all duration-300 ${errorLogin ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200 focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/20 bg-white'}`}
               />
-              {errorLogin && <p className="text-red-500 text-xs mt-2 text-center">Clave incorrecta. Intente de nuevo.</p>}
+              {errorLogin && <p className="text-red-500 text-xs mt-3 text-center font-medium animate-bounce">Clave incorrecta. Intente de nuevo.</p>}
             </div>
-            <button type="submit" className="w-full bg-[#0F172A] text-white py-4 rounded font-bold tracking-wide hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all shadow-lg">
+            
+            <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all duration-500 shadow-xl hover:shadow-[#D4AF37]/40 mt-4">
               INGRESAR AL SISTEMA
             </button>
           </form>
-          <p className="mt-8 text-xs text-gray-400">R. Lizárraga Developing</p>
+          
+          <div className="mt-12 pt-6 border-t border-gray-100">
+            <p className="text-[10px] text-gray-400 tracking-widest uppercase">R. Lizárraga Developing</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // --- PANTALLA DEL LOBBY (EL CÓDIGO QUE YA TENÍAS) ---
+  // --- PANTALLA DEL LOBBY ---
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-[#334155] font-sans pb-20 animate-in fade-in duration-700">
-      <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-lg">
-        <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
-          <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
+      {/* Barra de Navegación */}
+      <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-xl border-b border-[#D4AF37]/20">
+        <div className="flex items-center gap-4">
+          <img src="/logo.png" alt="Logo Actarium" className="w-10 h-10 object-contain drop-shadow-md" />
+          <h1 className="text-xl font-serif tracking-widest text-[#D4AF37] mt-1">ACTARIUM</h1>
         </div>
         <div className="flex items-center gap-6">
           <p className="text-sm tracking-wide font-light hidden md:block">Lic. Rodrigo Lizárraga Camacho</p>
-          <div className="w-10 h-10 bg-[#334155] rounded-full flex items-center justify-center border border-[#D4AF37]">
-            <span className="text-sm font-bold">RL</span>
+          <div className="w-10 h-10 bg-[#334155] rounded-full flex items-center justify-center border border-[#D4AF37] shadow-inner">
+            <span className="text-sm font-bold text-[#D4AF37]">RL</span>
           </div>
-          <button onClick={cerrarSesion} className="text-xs uppercase tracking-widest text-gray-400 hover:text-white transition-colors border-l border-gray-600 pl-6">
+          <button onClick={cerrarSesion} className="text-xs uppercase tracking-widest text-gray-400 hover:text-white transition-colors border-l border-gray-600 pl-6 h-6">
             Cerrar Sesión
           </button>
         </div>
@@ -130,9 +143,9 @@ export default function Home() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-20">
           <Link href="/individual">
-            <div className="bg-white h-full p-10 rounded-xl shadow-sm border border-gray-200 hover:shadow-xl hover:border-[#D4AF37] transition-all duration-300 cursor-pointer flex flex-col items-center text-center group">
-              <div className="w-20 h-20 bg-[#0F172A] rounded-full flex items-center justify-center mb-6 group-hover:bg-[#D4AF37] transition-colors duration-300 shadow-md">
-                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+            <div className="bg-white h-full p-10 rounded-2xl shadow-sm border border-gray-200 hover:shadow-2xl hover:border-[#D4AF37] transition-all duration-500 cursor-pointer flex flex-col items-center text-center group transform hover:-translate-y-1">
+              <div className="w-24 h-24 bg-[#0F172A] rounded-full flex items-center justify-center mb-8 group-hover:bg-[#D4AF37] transition-colors duration-500 shadow-lg">
+                <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
               </div>
               <h3 className="text-2xl font-serif text-[#0F172A] mb-3">Producción Individual</h3>
               <p className="text-sm text-gray-500 leading-relaxed">Auditoría minuciosa de los datos extraídos antes de generar un solo aviso.</p>
@@ -140,10 +153,10 @@ export default function Home() {
           </Link>
 
           <Link href="/masiva">
-            <div className="bg-white h-full p-10 rounded-xl shadow-sm border border-gray-200 hover:shadow-xl hover:border-[#D4AF37] transition-all duration-300 cursor-pointer flex flex-col items-center text-center group relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-2 bg-[#D4AF37]"></div>
-              <div className="w-20 h-20 bg-[#0F172A] rounded-full flex items-center justify-center mb-6 group-hover:bg-[#D4AF37] transition-colors duration-300 shadow-md">
-                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+            <div className="bg-white h-full p-10 rounded-2xl shadow-sm border border-gray-200 hover:shadow-2xl hover:border-[#D4AF37] transition-all duration-500 cursor-pointer flex flex-col items-center text-center group relative overflow-hidden transform hover:-translate-y-1">
+              <div className="absolute top-0 left-0 w-full h-2 bg-[#D4AF37] opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              <div className="w-24 h-24 bg-[#0F172A] rounded-full flex items-center justify-center mb-8 group-hover:bg-[#D4AF37] transition-colors duration-500 shadow-lg">
+                <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
               </div>
               <h3 className="text-2xl font-serif text-[#0F172A] mb-3">Producción Masiva (Lotes)</h3>
               <p className="text-sm text-gray-500 leading-relaxed">Subir múltiples documentos y empaquetar los avisos exitosos automáticamente en ZIP.</p>
@@ -157,36 +170,36 @@ export default function Home() {
             Archivo Maestro (Últimas Operaciones)
           </h3>
           
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-[#0F172A] text-white">
                   <tr>
-                    <th className="p-4 font-medium tracking-wide">ID</th>
-                    <th className="p-4 font-medium tracking-wide">Fecha y Hora</th>
-                    <th className="p-4 font-medium tracking-wide">Escritura</th>
-                    <th className="p-4 font-medium tracking-wide">Vendedor</th>
-                    <th className="p-4 font-medium tracking-wide">Comprador</th>
-                    <th className="p-4 font-medium tracking-wide text-center">Documento</th>
+                    <th className="p-5 font-medium tracking-wider text-xs uppercase">ID</th>
+                    <th className="p-5 font-medium tracking-wider text-xs uppercase">Fecha y Hora</th>
+                    <th className="p-5 font-medium tracking-wider text-xs uppercase">Escritura</th>
+                    <th className="p-5 font-medium tracking-wider text-xs uppercase">Vendedor</th>
+                    <th className="p-5 font-medium tracking-wider text-xs uppercase">Comprador</th>
+                    <th className="p-5 font-medium tracking-wider text-xs uppercase text-center">Documento</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {historial.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="p-8 text-center text-gray-400 italic">No hay operaciones registradas aún. Genere un aviso para comenzar a nutrir el historial.</td>
+                      <td colSpan="6" className="p-10 text-center text-gray-400 italic">No hay operaciones registradas aún. Genere un aviso para comenzar a nutrir el historial.</td>
                     </tr>
                   ) : (
                     historial.map((fila) => (
                       <tr key={fila.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="p-4 text-gray-400 font-mono">#{fila.id}</td>
-                        <td className="p-4 text-gray-500">{fila.fecha}</td>
-                        <td className="p-4 font-bold text-[#0F172A]">{fila.escritura}</td>
-                        <td className="p-4 truncate max-w-[200px]" title={fila.vendedor}>{fila.vendedor}</td>
-                        <td className="p-4 truncate max-w-[200px]" title={fila.comprador}>{fila.comprador}</td>
-                        <td className="p-4 text-center">
+                        <td className="p-5 text-gray-400 font-mono">#{fila.id}</td>
+                        <td className="p-5 text-gray-500">{fila.fecha}</td>
+                        <td className="p-5 font-bold text-[#0F172A]">{fila.escritura}</td>
+                        <td className="p-5 truncate max-w-[200px]" title={fila.vendedor}>{fila.vendedor}</td>
+                        <td className="p-5 truncate max-w-[200px]" title={fila.comprador}>{fila.comprador}</td>
+                        <td className="p-5 text-center">
                           <button 
                             onClick={() => descargarDelHistorial(fila.id, fila.archivo)}
-                            className="bg-[#FEFCE8] text-[#A16207] border border-[#FEF08A] hover:bg-[#D4AF37] hover:text-white px-3 py-2 rounded text-xs font-bold transition-colors inline-flex items-center gap-2 cursor-pointer shadow-sm"
+                            className="bg-[#FEFCE8] text-[#A16207] border border-[#FEF08A] hover:bg-[#D4AF37] hover:text-white hover:border-[#D4AF37] px-4 py-2 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                             {fila.acto || "DESCARGAR"}
