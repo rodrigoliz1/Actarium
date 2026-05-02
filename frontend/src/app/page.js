@@ -29,7 +29,7 @@ export default function Home() {
   const manejarLogin = (e) => {
     e.preventDefault();
     // CLAVE DE ACCESO MAESTRA (Puedes cambiarla aquí)
-    if (password === "NOTARIA1") {
+    if (password === "PRUEBA") {
       localStorage.setItem("actarium_auth", "true");
       setAutenticado(true);
       setErrorLogin(false);
@@ -97,7 +97,7 @@ export default function Home() {
               INGRESAR AL SISTEMA
             </button>
           </form>
-          <p className="mt-8 text-xs text-gray-400">Notaría Pública No. 1 • Lic. César Alejandro Uribe</p>
+          <p className="mt-8 text-xs text-gray-400">R. Lizárraga Developing</p>
         </div>
       </div>
     );
@@ -114,9 +114,9 @@ export default function Home() {
           <h1 className="text-2xl font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
         </div>
         <div className="flex items-center gap-6">
-          <p className="text-sm tracking-wide font-light hidden md:block">Lic. César Alejandro Uribe Vázquez</p>
+          <p className="text-sm tracking-wide font-light hidden md:block">Lic. Rodrigo Lizárraga Camacho</p>
           <div className="w-10 h-10 bg-[#334155] rounded-full flex items-center justify-center border border-[#D4AF37]">
-            <span className="text-sm font-bold">CU</span>
+            <span className="text-sm font-bold">RL</span>
           </div>
           <button onClick={cerrarSesion} className="text-xs uppercase tracking-widest text-gray-400 hover:text-white transition-colors border-l border-gray-600 pl-6">
             Cerrar Sesión
