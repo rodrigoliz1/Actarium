@@ -106,12 +106,10 @@ export default function Home() {
   // --- PANTALLA DEL LOBBY (EL CÓDIGO QUE YA TENÍAS) ---
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-[#334155] font-sans pb-20 animate-in fade-in duration-700">
-      <nav className="bg-[#0F172A] text-white py-6 px-10 shadow-md flex justify-between items-center">
+      <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 border-2 border-[#D4AF37] flex items-center justify-center rounded-sm">
-            <span className="text-[#D4AF37] font-serif font-bold">A</span>
-          </div>
-          <h1 className="text-2xl font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
+          <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
+          <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
         </div>
         <div className="flex items-center gap-6">
           <p className="text-sm tracking-wide font-light hidden md:block">Lic. Rodrigo Lizárraga Camacho</p>

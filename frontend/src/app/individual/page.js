@@ -42,8 +42,8 @@ export default function ProduccionIndividual() {
     <div className="min-h-screen bg-[#FDFDFD] text-[#334155]">
       <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-6 h-6 border border-[#D4AF37] flex items-center justify-center"><span className="text-[#D4AF37] text-xs font-bold">A</span></div>
-          <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
+            <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
+            <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
         </div>
         <Link href="/" className="text-xs uppercase tracking-widest text-gray-400 hover:text-white">← Salir al Lobby</Link>
       </nav>
