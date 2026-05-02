@@ -20,7 +20,7 @@ export default function Home() {
   }, []);
 
   const cargarHistorial = () => {
-    fetch("http://localhost:8000/historial")
+    fetch("https://actarium-yqof.onrender.com/historial")
       .then(res => res.json())
       .then(data => setHistorial(data))
       .catch(err => console.error("No se pudo cargar el historial", err));
@@ -48,7 +48,7 @@ export default function Home() {
   const descargarDelHistorial = async (id, nombreArchivo) => {
     if (!nombreArchivo) return alert("Este registro no tiene archivo guardado.");
     try {
-      const res = await fetch(`http://localhost:8000/descargar-historial/${id}`);
+      const res = await fetch(`https://actarium-yqof.onrender.com/descargar-historial/${id}`);
       if (!res.ok) throw new Error("Error en el servidor");
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);

@@ -14,7 +14,7 @@ export default function ProduccionIndividual() {
     formData.append("file", e.target.files[0]);
 
     try {
-      const res = await fetch("http://localhost:8000/extraer-datos", { method: "POST", body: formData });
+      const res = await fetch("https://actarium-yqof.onrender.com/extraer-datos", { method: "POST", body: formData });
       const data = await res.json();
       setDatos(data);
       setPaso(2);
@@ -28,7 +28,7 @@ export default function ProduccionIndividual() {
 
   const descargar = async () => {
     setCargando(true);
-    const res = await fetch("http://localhost:8000/generar-final", {
+    const res = await fetch("https://actarium-yqof.onrender.com/generar-final", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(datos),
     });
     const blob = await res.blob();

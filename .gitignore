@@ -1,0 +1,15 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+actarium_historial.db
+avisos_generados/
+temp_*
+
+# Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Otros
+.DS_Store

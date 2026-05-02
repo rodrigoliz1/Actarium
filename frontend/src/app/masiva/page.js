@@ -43,7 +43,7 @@ export default function ProduccionMasiva() {
     });
 
     try {
-      const respuesta = await fetch("http://localhost:8000/procesar-masivo", {
+      const respuesta = await fetch("https://actarium-yqof.onrender.com/procesar-masivo", {
         method: "POST",
         body: formData,
       });
