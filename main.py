@@ -37,7 +37,10 @@ async def extraer_datos(file: UploadFile = File(...)):
         model="gpt-4o-mini",
         response_format={ "type": "json_object" },
         messages=[
-            {"role": "system", "content": "Eres el Abogado Proyectista Jefe. Lee la escritura y extrae los datos en un JSON estricto con estas claves: escritura_numero, cuenta_predial, lugar_fecha_firma, naturaleza_acto, nombre_vendedor, estado_civil_vendedor, curp_vendedor, nombre_comprador, estado_civil_comprador, curp_comprador, ubicacion_inmueble, valor_operacion, impuesto_monto, total_liquidacion. Si un dato no existe, usa una cadena vacía. Si hay múltiples nombres o CURPs, únelos con comas."},
+            {
+                "role": "system", 
+                "content": "Eres el Abogado Proyectista Jefe. Lee la escritura y extrae los datos en un JSON estricto con estas claves: escritura_numero, cuenta_predial, lugar_fecha_firma, naturaleza_acto, nombre_vendedor, estado_civil_vendedor, curp_vendedor, nombre_comprador, estado_civil_comprador, curp_comprador, ubicacion_inmueble, valor_operacion, impuesto_monto, total_liquidacion, nombre_notario, notaria_numero, correo_notario. Si un dato no existe, usa una cadena vacía. Si hay múltiples nombres o CURPs, únelos con comas."
+            },
             {"role": "user", "content": texto_completo}
         ]
     )
@@ -46,8 +49,10 @@ async def extraer_datos(file: UploadFile = File(...)):
     
     datos_completos = {
         "recaudadora": "", "clave_catastral": "", "folio_real": "",
-        "nombre_notario": "LIC. CESAR ALEJANDRO URIBE VÁZQUEZ", "notaria_numero": "1",
-        "correo_notario": "contacto@notaria1.com", "antecedentes_registro": "",
+        "nombre_notario": datos_ia.get("nombre_notario", ""), 
+        "notaria_numero": datos_ia.get("notaria_numero", ""),
+        "correo_notario": datos_ia.get("correo_notario", ""), 
+        "antecedentes_registro": "",
         "valor_catastral": "", "valor_avaluo": datos_ia.get("valor_operacion", ""),
         **datos_ia
     }
