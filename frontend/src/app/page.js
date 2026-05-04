@@ -83,7 +83,7 @@ export default function LandingPage() {
         
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           <div className="mb-12 md:mb-20 md:w-2/3 text-center md:text-left">
-            <h2 className="text-xs md:text-sm font-bold text-[#D4AF37] uppercase tracking-[0.2em] mb-4">Motor Cognitivo OpenAI</h2>
+            <h2 className="text-xs md:text-sm font-bold text-[#D4AF37] uppercase tracking-[0.2em] mb-4">Motor Cognitivo Actarium AI</h2>
             <h3 className="text-3xl md:text-5xl font-serif mb-6 leading-tight">No es una plantilla. <br className="hidden md:block"/><span className="italic text-gray-400">Es comprensión lectora real.</span></h3>
             <p className="text-gray-400 text-base md:text-lg font-light leading-relaxed">
               Actarium no busca palabras clave. Nuestro motor de Inteligencia Artificial lee la escritura completa, comprende el contexto, identifica a los actores (por más complejos que sean los nombres o estados civiles) y extrae las métricas exactas.
@@ -96,9 +96,9 @@ export default function LandingPage() {
               <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#D4AF37]/10 flex items-center justify-center mb-5 md:mb-6 group-hover:scale-110 transition-transform">
                 <svg className="w-5 h-5 md:w-6 md:h-6 text-[#D4AF37]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
               </div>
-              <h4 className="text-xl md:text-2xl font-serif mb-3">Producción Masiva (Lotes)</h4>
+              <h4 className="text-xl md:text-2xl font-serif mb-3">Producción Individual o Masiva (Lotes)</h4>
               <p className="text-sm md:text-base text-gray-400 font-light leading-relaxed">
-                Suba 50, 100 o 500 escrituras simultáneamente. Actarium las procesa en segundo plano y le entrega un archivo ZIP perfectamente estructurado y listo para presentar en el archivo de instrumentos públicos.
+                Suba 1, 50, 100 o 500 escrituras simultáneamente. Actarium las procesa en segundo plano y le entrega un archivo ZIP perfectamente estructurado y listo para presentar en el archivo de instrumentos públicos.
               </p>
             </div>
             
@@ -106,9 +106,9 @@ export default function LandingPage() {
               <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-[#D4AF37]/10 flex items-center justify-center mb-5 md:mb-6 group-hover:scale-110 transition-transform">
                 <svg className="w-5 h-5 md:w-6 md:h-6 text-[#D4AF37]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
               </div>
-              <h4 className="text-xl md:text-2xl font-serif mb-3">Bóveda Inmortal</h4>
+              <h4 className="text-xl md:text-2xl font-serif mb-3">Archivo Seguro</h4>
               <p className="text-sm md:text-base text-gray-400 font-light leading-relaxed">
-                Cada aviso generado se encripta y se resguarda en nuestra nube (Supabase) con seguridad a nivel bancario. Acceda a su historial desde cualquier lugar, para siempre.
+                Cada aviso generado se encripta y se resguarda en nuestra base de datos, con seguridad a nivel bancario. Acceda a su historial desde cualquier lugar, para siempre.
               </p>
             </div>
 
@@ -148,7 +148,7 @@ export default function LandingPage() {
 
              <div className="relative flex flex-col items-center">
                <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-[#0F172A] border border-[#0F172A] flex items-center justify-center text-xl md:text-2xl font-serif text-[#D4AF37] mb-6 md:mb-8 z-10 shadow-xl scale-110">2</div>
-               <h4 className="text-lg md:text-xl font-bold text-[#0F172A] mb-2 md:mb-3">La IA Extrae</h4>
+               <h4 className="text-lg md:text-xl font-bold text-[#0F172A] mb-2 md:mb-3">Actarium IA Extrae</h4>
                <p className="text-sm md:text-base text-gray-500 font-light leading-relaxed">El motor analiza partes, inmuebles, valores y antecedentes, rellenando el formato oficial en 4 segundos.</p>
              </div>
 
