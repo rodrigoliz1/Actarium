@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation"; // <-- Nuevo: Para redirigir
 import { createClient } from "@supabase/supabase-js";
 
 // Ocultamos las llaves usando variables de entorno públicas de Next.js
@@ -10,9 +11,30 @@ const supabase = createClient(
 );
 
 export default function ProduccionIndividual() {
+  const router = useRouter();
+  const [verificandoAcceso, setVerificandoAcceso] = useState(true); // <-- Estado de seguridad
+
   const [paso, setPaso] = useState(1);
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(false);
+
+  // EL CADENERO: Verifica si hay sesión antes de mostrar la página
+  useEffect(() => {
+    const revisarLicencia = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/terminal"); // Si no hay sesión, lo expulsa al login
+      } else {
+        setVerificandoAcceso(false); // Si hay sesión, le da el pase
+      }
+    };
+    revisarLicencia();
+  }, [router]);
+
+  // Si está verificando, mostramos pantalla de carga para que no vea la herramienta ni un segundo
+  if (verificandoAcceso) {
+    return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>;
+  }
 
   const manejarSubida = async (e) => {
     if (!e.target.files[0]) return;

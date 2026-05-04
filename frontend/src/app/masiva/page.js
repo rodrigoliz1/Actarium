@@ -1,10 +1,37 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export default function ProduccionMasiva() {
+  const router = useRouter();
+  const [verificandoAcceso, setVerificandoAcceso] = useState(true);
+
   const [archivos, setArchivos] = useState([]);
   const [procesando, setProcesando] = useState(false);
+
+  // EL CADENERO
+  useEffect(() => {
+    const revisarLicencia = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/terminal");
+      } else {
+        setVerificandoAcceso(false);
+      }
+    };
+    revisarLicencia();
+  }, [router]);
+
+  if (verificandoAcceso) {
+    return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>;
+  }
 
   const manejarSubida = (e) => {
     if (e.target.files) {
@@ -77,7 +104,7 @@ export default function ProduccionMasiva() {
             <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
             <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
         </div>
-        <Link href="/" className="text-xs uppercase tracking-widest text-gray-400 hover:text-white">← Salir al Lobby</Link>
+        <Link href="/terminal" className="text-xs uppercase tracking-widest text-gray-400 hover:text-white">← Salir al Lobby</Link>
       </nav>
 
       <main className="max-w-4xl mx-auto py-16 px-6">
