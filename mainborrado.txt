@@ -5,25 +5,67 @@ from docx import Document
 from docxtpl import DocxTemplate
 import re
 import os
-import zipfile  # NUEVA HERRAMIENTA: Para empaquetar en ZIP
-from typing import List  # NUEVA HERRAMIENTA: Para recibir listas de archivos
+import zipfile
+from typing import List
+import sqlite3
+from datetime import datetime
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # <--- EL CAMBIO ESTÁ AQUÍ
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Creamos la carpeta donde se guardarán los archivos permanentemente
+if not os.path.exists("avisos_generados"):
+    os.makedirs("avisos_generados")
+
+# --- BASE DE DATOS ---
+def iniciar_bd():
+    conexion = sqlite3.connect('actarium_historial.db')
+    cursor = conexion.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS historial (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT,
+            escritura TEXT,
+            acto TEXT,
+            vendedor TEXT,
+            comprador TEXT,
+            archivo TEXT
+        )
+    ''')
+    # Por si ya tenías la tabla vieja, le agregamos la columna 'archivo' sin borrar tus datos
+    try:
+        cursor.execute('ALTER TABLE historial ADD COLUMN archivo TEXT')
+    except:
+        pass 
+    conexion.commit()
+    conexion.close()
+
+iniciar_bd()
+
+def guardar_en_historial(datos, nombre_archivo):
+    conexion = sqlite3.connect('actarium_historial.db')
+    cursor = conexion.cursor()
+    fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('''
+        INSERT INTO historial (fecha, escritura, acto, vendedor, comprador, archivo) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (fecha_actual, datos.get("escritura_numero", "S/N"), datos.get("naturaleza_acto", "-"), datos.get("nombre_vendedor", "-"), datos.get("nombre_comprador", "-"), nombre_archivo))
+    conexion.commit()
+    conexion.close()
+
+# --- SABUESOS DE EXTRACCIÓN ---
 def limpiar_nombre(texto):
     match = re.search(r"([A-ZÁÉÍÓÚÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,})*(?:\s+[yYeE]\s+[A-ZÁÉÍÓÚÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,})*)*)", texto)
     if match: return match.group(1).strip()
     return texto.strip()
 
-# Función interna para extraer datos (así no repetimos código)
 def extraer_datos_de_texto(texto_completo):
     escritura_num = re.search(r"(?:ESCRITURA|NÚMERO|NUMERO)[\s:]*([\d,]+)", texto_completo, re.IGNORECASE)
     cuenta_predial = re.search(r"Cuenta\s+Predial\s+número\s*([A-Za-z0-9\-]+)", texto_completo, re.IGNORECASE)
@@ -65,7 +107,38 @@ def extraer_datos_de_texto(texto_completo):
         "impuesto_monto": montos[2] if len(montos) > 2 else "", "total_liquidacion": montos[2] if len(montos) > 2 else ""
     }
 
-# ---- MÓDULO INDIVIDUAL (El que ya hicimos) ----
+# --- RUTAS DE LA API ---
+@app.get("/historial")
+async def obtener_historial():
+    conexion = sqlite3.connect('actarium_historial.db')
+    cursor = conexion.cursor()
+    cursor.execute("SELECT id, fecha, escritura, acto, vendedor, comprador, archivo FROM historial ORDER BY id DESC LIMIT 50")
+    filas = cursor.fetchall()
+    conexion.close()
+    
+    resultado = []
+    for fila in filas:
+        resultado.append({
+            "id": fila[0], "fecha": fila[1], "escritura": fila[2],
+            "acto": fila[3], "vendedor": fila[4], "comprador": fila[5], "archivo": fila[6]
+        })
+    return resultado
+
+# NUEVA RUTA: Para descargar un archivo antiguo
+@app.get("/descargar-historial/{registro_id}")
+async def descargar_historial(registro_id: int):
+    conexion = sqlite3.connect('actarium_historial.db')
+    cursor = conexion.cursor()
+    cursor.execute("SELECT archivo FROM historial WHERE id = ?", (registro_id,))
+    resultado = cursor.fetchone()
+    conexion.close()
+    
+    if resultado and resultado[0]:
+        ruta_archivo = os.path.join("avisos_generados", resultado[0])
+        if os.path.exists(ruta_archivo):
+            return FileResponse(ruta_archivo, filename=resultado[0])
+    return {"error": "Archivo no encontrado"}
+
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...)):
     ruta_temporal = f"temp_{file.filename}"
@@ -79,41 +152,40 @@ async def extraer_datos(file: UploadFile = File(...)):
 async def generar_final(datos: dict):
     doc = DocxTemplate("Plantilla_GDL.docx")
     doc.render(datos)
-    doc.save("Aviso_Completo_Actarium.docx")
-    return FileResponse("Aviso_Completo_Actarium.docx", filename="Aviso_Actarium_Final.docx")
+    
+    # Creamos un nombre único y lo guardamos en la carpeta permanente
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nombre_unico = f"Aviso_{datos.get('escritura_numero', 'SN')}_{timestamp}.docx"
+    ruta_guardado = os.path.join("avisos_generados", nombre_unico)
+    
+    doc.save(ruta_guardado)
+    guardar_en_historial(datos, nombre_unico) # Guardamos el nombre en la BD
+    
+    return FileResponse(ruta_guardado, filename="Aviso_Actarium_Final.docx")
 
-# ---- NUEVO MÓDULO: PRODUCCIÓN MASIVA ----
 @app.post("/procesar-masivo")
 async def procesar_masivo(archivos: List[UploadFile] = File(...)):
     nombre_zip = "Avisos_Actarium.zip"
-    
-    # Creamos el archivo ZIP
     with zipfile.ZipFile(nombre_zip, 'w') as zipf:
         for archivo in archivos:
-            # Leemos cada archivo
             ruta_temporal = f"temp_{archivo.filename}"
-            with open(ruta_temporal, "wb") as buffer:
-                buffer.write(await archivo.read())
-            
+            with open(ruta_temporal, "wb") as buffer: buffer.write(await archivo.read())
             escritura = Document(ruta_temporal)
             texto_completo = " ".join([p.text for p in escritura.paragraphs])
             
-            # Extraemos los datos
             datos = extraer_datos_de_texto(texto_completo)
             
-            # Generamos su Word y lo nombramos con el número de escritura para ordenarlo
             doc = DocxTemplate("Plantilla_GDL.docx")
             doc.render(datos)
-            num_escritura = datos["escritura_numero"] if datos["escritura_numero"] else "S_N"
-            nombre_salida = f"Aviso_Escritura_{num_escritura}.docx"
-            doc.save(nombre_salida)
             
-            # Metemos el Word al ZIP
-            zipf.write(nombre_salida)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            num_escritura = datos.get("escritura_numero", "S_N")
+            nombre_unico = f"Aviso_{num_escritura}_{timestamp}.docx"
+            ruta_guardado = os.path.join("avisos_generados", nombre_unico)
             
-            # Limpiamos los archivos sueltos
+            doc.save(ruta_guardado)
+            zipf.write(ruta_guardado, arcname=nombre_unico) # Lo metemos al ZIP
+            guardar_en_historial(datos, nombre_unico)
+            
             os.remove(ruta_temporal)
-            os.remove(nombre_salida)
-            
-    # Mandamos el ZIP completo de regreso a la página web
     return FileResponse(nombre_zip, filename="Paquete_Avisos_Actarium.zip", media_type="application/zip")

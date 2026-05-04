@@ -3,3 +3,5 @@ uvicorn
 python-multipart
 python-docx
 docxtpl
+openai
+supabase

@@ -1,7 +1,12 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-
+import { createClient } from "@supabase/supabase-js";
+// Ocultamos las llaves usando variables de entorno públicas de Next.js
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 export default function ProduccionIndividual() {
   const [paso, setPaso] = useState(1);
   const [datos, setDatos] = useState(null);
@@ -28,13 +33,35 @@ export default function ProduccionIndividual() {
 
   const descargar = async () => {
     setCargando(true);
-    const res = await fetch("https://actarium-yqof.onrender.com/generar-final", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(datos),
-    });
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "Aviso_Completo_Actarium.docx"; a.click();
+    
+    try {
+      // Obtenemos al usuario que inició sesión
+      const { data: { user } } = await supabase.auth.getUser();
+      const datosFinales = { ...datos, user_id: user?.id }; // Añadimos su ID secreto
+
+      const res = await fetch("https://actarium-yqof.onrender.com/generar-final", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(datosFinales),
+      });
+      
+      const respuestaBackend = await res.json();
+      
+      if(respuestaBackend.success) {
+        // Como ya está en la Bóveda, lo descargamos directo de Supabase
+        const { data, error } = await supabase.storage.from('avisos_generados').download(respuestaBackend.archivo);
+        if (!error) {
+          const url = window.URL.createObjectURL(data);
+          const a = document.createElement("a");
+          a.href = url; a.download = respuestaBackend.archivo; a.click();
+        }
+        window.location.href = "/terminal"; // Lo mandamos de regreso al lobby
+      } else {
+        alert("Hubo un error al generar el archivo.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error al conectar con el servidor en la nube.");
+    }
+    
     setCargando(false);
   };
 
