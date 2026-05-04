@@ -170,7 +170,15 @@ export default function Terminal() {
                 {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-[#D4AF37]'}`}>{authMsg.text}</p>}
                 <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all shadow-lg mt-2">INGRESAR</button>
               </form>
-              <button onClick={() => {setVista("opciones-registro"); setAuthMsg({text:"", type:""});}} className="mt-6 text-xs text-gray-400 hover:text-[#D4AF37] transition-colors border-b border-transparent hover:border-[#D4AF37] pb-1">¿No tienes cuenta? Crear una Notaría</button>
+              
+              <div className="mt-8 flex flex-col items-center gap-4">
+                <button onClick={() => {setVista("opciones-registro"); setAuthMsg({text:"", type:""});}} className="text-xs text-gray-400 hover:text-[#D4AF37] transition-colors border-b border-transparent hover:border-[#D4AF37] pb-1">
+                  ¿No tienes cuenta? Crear una Notaría
+                </button>
+                <Link href="/" className="text-xs text-gray-500 hover:text-[#0F172A] transition-colors font-medium">
+                  ← Volver a la página principal
+                </Link>
+              </div>
             </div>
           )}
 
