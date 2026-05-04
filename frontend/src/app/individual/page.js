@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation"; // <-- Nuevo: Para redirigir
+import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 // Ocultamos las llaves usando variables de entorno públicas de Next.js
@@ -47,7 +47,10 @@ export default function ProduccionIndividual() {
       const data = await res.json();
       setDatos(data);
       setPaso(2);
-    } catch (err) { alert("Error de conexión"); }
+    } catch (err) { 
+      console.error(err);
+      alert("Error de conexión con el servidor."); 
+    }
     setCargando(false);
   };
 
@@ -198,13 +201,34 @@ export default function ProduccionIndividual() {
                 <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-full">
                   <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">III. El Inmueble</h3>
                   <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3 mb-2 p-3 bg-gray-50 rounded border border-gray-200">
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-[#0F172A]">Clasificación</label>
+                        <select value={datos?.clasificacion_inmueble || ""} onChange={e => handleChange("clasificacion_inmueble", e.target.value)} className="w-full mt-1 p-2 bg-white border border-gray-200 rounded outline-none focus:border-[#D4AF37] text-xs">
+                          <option value="">Seleccione...</option>
+                          <option value="Urbano">Urbano</option>
+                          <option value="Rústico">Rústico</option>
+                          <option value="Baldío">Baldío</option>
+                          <option value="Construido">Construido</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-[#0F172A]">Lo transmitido es</label>
+                        <select value={datos?.lo_transmitido || ""} onChange={e => handleChange("lo_transmitido", e.target.value)} className="w-full mt-1 p-2 bg-white border border-gray-200 rounded outline-none focus:border-[#D4AF37] text-xs">
+                          <option value="">Seleccione...</option>
+                          <option value="Fracción">Fracción</option>
+                          <option value="Resto">Resto</option>
+                          <option value="Totalidad">Totalidad</option>
+                        </select>
+                      </div>
+                    </div>
                     <div>
                       <label className="text-[10px] uppercase font-bold text-gray-400">Ubicación, Medidas y Linderos</label>
-                      <textarea rows="6" value={datos?.ubicacion_inmueble || ""} onChange={e => handleChange("ubicacion_inmueble", e.target.value)} className="w-full mt-1 p-3 bg-gray-50 border rounded outline-none focus:border-[#D4AF37] text-sm"></textarea>
+                      <textarea rows="10" value={datos?.ubicacion_inmueble || ""} onChange={e => handleChange("ubicacion_inmueble", e.target.value)} className="w-full mt-1 p-3 bg-gray-50 border rounded outline-none focus:border-[#D4AF37] text-sm leading-relaxed"></textarea>
                     </div>
                     <div>
                       <label className="text-[10px] uppercase font-bold text-gray-400">Antecedentes de Adquisición (RPP)</label>
-                      <textarea rows="6" value={datos?.antecedentes_registro || ""} onChange={e => handleChange("antecedentes_registro", e.target.value)} placeholder="Ej. Adquirido mediante Escritura 1234, Folio Real 56789..." className={`w-full mt-1 p-3 border rounded outline-none text-sm ${!datos?.antecedentes_registro ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`}></textarea>
+                      <textarea rows="4" value={datos?.antecedentes_registro || ""} onChange={e => handleChange("antecedentes_registro", e.target.value)} placeholder="Ej. Adquirido mediante Escritura 1234, Folio Real 56789..." className={`w-full mt-1 p-3 border rounded outline-none text-sm ${!datos?.antecedentes_registro ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`}></textarea>
                     </div>
                   </div>
                 </section>

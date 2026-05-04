@@ -37,11 +37,8 @@ export default function ProduccionMasiva() {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
       
-      // La magia: acumulamos los archivos nuevos sin borrar los que ya estaban
       setArchivos((prevArchivos) => {
         const listaActualizada = [...prevArchivos];
-        
-        // Verificamos que no se agregue el mismo archivo dos veces
         nuevosArchivos.forEach(nuevo => {
           if (!listaActualizada.some(a => a.name === nuevo.name)) {
             listaActualizada.push(nuevo);
@@ -50,13 +47,11 @@ export default function ProduccionMasiva() {
         return listaActualizada;
       });
       
-      // Reseteamos el input para que permita volver a seleccionar el mismo archivo si lo borramos y lo volvemos a subir
       e.target.value = null; 
     }
   };
 
   const eliminarArchivo = (nombreArchivo) => {
-    // Filtramos la lista para quitar el archivo que el usuario quiere borrar
     setArchivos(archivos.filter((archivo) => archivo.name !== nombreArchivo));
   };
 
@@ -64,12 +59,12 @@ export default function ProduccionMasiva() {
     if (archivos.length === 0) return;
     setProcesando(true);
 
-    const formData = new FormData();
-    archivos.forEach((archivo) => {
-      formData.append("archivos", archivo);
-    });
-
     try {
+      const formData = new FormData();
+      archivos.forEach((archivo) => {
+        formData.append("archivos", archivo);
+      });
+
       const respuesta = await fetch("https://actarium-yqof.onrender.com/procesar-masivo", {
         method: "POST",
         body: formData,
@@ -85,13 +80,13 @@ export default function ProduccionMasiva() {
         a.click();
         a.remove();
         
-        // Limpiamos la lista al terminar con éxito
         setArchivos([]);
         alert("¡Paquete generado con éxito!");
       } else {
         alert("Error procesando el lote de escrituras.");
       }
     } catch (error) {
+      console.error(error);
       alert("Error de conexión con el servidor Actarium.");
     }
     setProcesando(false);
