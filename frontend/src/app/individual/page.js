@@ -48,12 +48,21 @@ export default function ProduccionIndividual() {
       if(respuestaBackend.success) {
         // Como ya está en la Bóveda, lo descargamos directo de Supabase
         const { data, error } = await supabase.storage.from('avisos_generados').download(respuestaBackend.archivo);
+        
         if (!error) {
           const url = window.URL.createObjectURL(data);
           const a = document.createElement("a");
           a.href = url; a.download = respuestaBackend.archivo; a.click();
+          
+          // Le damos 2 segundos al navegador para descargar antes de sacarnos al lobby
+          setTimeout(() => {
+            window.location.href = "/terminal";
+          }, 2000);
+
+        } else {
+          alert("El archivo se generó, pero no se pudo descargar automáticamente.");
+          window.location.href = "/terminal";
         }
-        window.location.href = "/terminal"; // Lo mandamos de regreso al lobby
       } else {
         alert("Hubo un error al generar el archivo.");
       }
