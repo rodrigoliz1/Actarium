@@ -15,7 +15,7 @@ export default function LandingPage() {
         
         <div className="hidden lg:flex gap-10 text-[11px] font-bold uppercase tracking-[0.2em] text-gray-500">
           <a href="#plataforma" className="hover:text-[#D4AF37] transition-colors duration-300">Plataforma</a>
-          <a href="#inteligencia" className="hover:text-[#D4AF37] transition-colors duration-300">Inteligencia Artificial</a>
+          <a href="#inteligencia" className="hover:text-[#D4AF37] transition-colors duration-300">Actarium AI</a>
           <a href="#flujo" className="hover:text-[#D4AF37] transition-colors duration-300">Cómo Funciona</a>
           <Link href="/pricing" className="hover:text-[#D4AF37] transition-colors duration-300">Licencias</Link>
         </div>
@@ -45,9 +45,9 @@ export default function LandingPage() {
           </div>
           
           <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-[5.5rem] font-serif text-[#0F172A] mb-6 md:mb-8 leading-[1.2] md:leading-[1.1] tracking-tight">
-            Excelencia Jurídica <br className="hidden md:block"/> 
+           El Futuro de la <br className="hidden md:block"/> 
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] via-[#C5A028] to-[#E8C550] italic">
-              Impulsada por IA.
+              Eficiencia Notarial.
             </span>
           </h1>
           
