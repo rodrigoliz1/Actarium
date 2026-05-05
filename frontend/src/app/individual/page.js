@@ -79,7 +79,8 @@ export default function ProduccionIndividual() {
         if (!error) {
           const url = window.URL.createObjectURL(data);
           const a = document.createElement("a");
-          a.href = url; a.download = respuestaBackend.archivo; a.click();
+          a.href = url; a.download = respuestaBackend.nombre_descarga; 
+          a.click();
           
           // Le damos 2 segundos al navegador para descargar antes de sacarnos al lobby
           setTimeout(() => {
