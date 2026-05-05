@@ -1,9 +1,11 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from docx import Document
 from docxtpl import DocxTemplate
 import os
 import json
+import zipfile
 from datetime import datetime
 from typing import List
 
@@ -93,3 +95,86 @@ async def generar_final(datos: dict):
 
     os.remove(ruta_local) 
     return {"success": True, "archivo": nombre_unico}
+
+
+# --- EL NUEVO MOTOR DE PRODUCCIÓN MASIVA ---
+@app.post("/procesar-masivo")
+async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: str = Form(None)):
+    timestamp_lote = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nombre_zip = f"Paquete_Avisos_Actarium_{timestamp_lote}.zip"
+    
+    with zipfile.ZipFile(nombre_zip, 'w') as zipf:
+        for archivo in archivos:
+            # 1. Leer el documento
+            ruta_temporal = f"temp_{archivo.filename}"
+            with open(ruta_temporal, "wb") as buffer: 
+                buffer.write(await archivo.read())
+            
+            escritura = Document(ruta_temporal)
+            texto_completo = " ".join([p.text for p in escritura.paragraphs])
+            os.remove(ruta_temporal)
+            
+            # 2. Extracción Cognitiva de cada escritura
+            respuesta = ia_client.chat.completions.create(
+                model="gpt-4o-mini",
+                response_format={ "type": "json_object" },
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "Eres el Abogado Proyectista Jefe. Extrae los datos en JSON con las siguientes claves: escritura_numero, cuenta_predial, lugar_fecha_firma, naturaleza_acto, nombre_vendedor, estado_civil_vendedor, curp_vendedor, nombre_comprador, estado_civil_comprador, curp_comprador, ubicacion_inmueble, valor_operacion, impuesto_monto, total_liquidacion, nombre_notario, notaria_numero, correo_notario, clasificacion_inmueble, lo_transmitido.\n\nREGLAS ESTRICTAS:\n1. 'ubicacion_inmueble': Extrae de forma LITERAL, ÍNTEGRA Y COMPLETA toda la descripción, medidas y linderos. NO RESUMAS NADA.\n2. 'clasificacion_inmueble': Deduce del texto y responde estrictamente con una opción: 'Urbano', 'Rústico', 'Baldío' o 'Construido'.\n3. 'lo_transmitido': Responde estrictamente con 'Fracción', 'Resto' o 'Totalidad'.\n4. Si un dato no existe, usa una cadena vacía."
+                    },
+                    {"role": "user", "content": texto_completo}
+                ]
+            )
+            
+            datos_ia = json.loads(respuesta.choices[0].message.content)
+            clasif = datos_ia.get("clasificacion_inmueble", "")
+            trans = datos_ia.get("lo_transmitido", "")
+            
+            # 3. Preparar Formato y Casillas
+            datos_completos = {
+                "recaudadora": "", "clave_catastral": "", "folio_real": "",
+                "nombre_notario": datos_ia.get("nombre_notario", ""), 
+                "notaria_numero": datos_ia.get("notaria_numero", ""),
+                "correo_notario": datos_ia.get("correo_notario", ""), 
+                "antecedentes_registro": "",
+                "valor_catastral": "", "valor_avaluo": datos_ia.get("valor_operacion", ""),
+                "x_urbano": "X" if clasif == "Urbano" else "",
+                "x_rustico": "X" if clasif == "Rústico" else "",
+                "x_baldio": "X" if clasif == "Baldío" else "",
+                "x_construido": "X" if clasif == "Construido" else "",
+                "x_fraccion": "X" if trans == "Fracción" else "",
+                "x_resto": "X" if trans == "Resto" else "",
+                "x_totalidad": "X" if trans == "Totalidad" else "",
+                **datos_ia
+            }
+            
+            # 4. Generar el Word Individual
+            doc = DocxTemplate("Plantilla_GDL.docx")
+            doc.render(datos_completos)
+            
+            num_escritura = datos_completos.get('escritura_numero', 'SN')
+            # Nombre limpio para evitar conflictos al guardar
+            nombre_limpio = archivo.filename.replace(".docx", "")
+            nombre_unico = f"Aviso_{num_escritura}_{nombre_limpio}.docx"
+            ruta_local = f"temp_{nombre_unico}"
+            
+            doc.save(ruta_local)
+            
+            # 5. Respaldar en la Nube (Bóveda y Base de Datos)
+            with open(ruta_local, "rb") as f:
+                supabase.storage.from_("avisos_generados").upload(nombre_unico, f)
+            
+            if user_id:
+                supabase.table("historial").insert({
+                    "user_id": user_id, "escritura": str(num_escritura),
+                    "acto": datos_completos.get("naturaleza_acto", "-"), "vendedor": datos_completos.get("nombre_vendedor", "-"),
+                    "comprador": datos_completos.get("nombre_comprador", "-"), "archivo": nombre_unico
+                }).execute()
+                
+            # 6. Empaquetar en el ZIP y Limpiar
+            zipf.write(ruta_local, arcname=nombre_unico)
+            os.remove(ruta_local)
+            
+    # 7. Regresar el archivo ZIP ensamblado al cliente
+    return FileResponse(nombre_zip, filename=nombre_zip, media_type="application/zip")
