@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-// Ocultamos las llaves usando variables de entorno públicas de Next.js
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -12,26 +11,24 @@ const supabase = createClient(
 
 export default function ProduccionIndividual() {
   const router = useRouter();
-  const [verificandoAcceso, setVerificandoAcceso] = useState(true); // <-- Estado de seguridad
+  const [verificandoAcceso, setVerificandoAcceso] = useState(true);
 
   const [paso, setPaso] = useState(1);
-  const [datos, setDatos] = useState(null);
+  const [avisos, setAvisos] = useState([]); // Ahora es un arreglo de avisos
   const [cargando, setCargando] = useState(false);
 
-  // EL CADENERO: Verifica si hay sesión antes de mostrar la página
+  // Campo de Fecha Global
+  const [fechaGlobal, setFechaGlobal] = useState("");
+
   useEffect(() => {
     const revisarLicencia = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push("/terminal"); // Si no hay sesión, lo expulsa al login
-      } else {
-        setVerificandoAcceso(false); // Si hay sesión, le da el pase
-      }
+      if (!session) router.push("/terminal");
+      else setVerificandoAcceso(false);
     };
     revisarLicencia();
   }, [router]);
 
-  // Si está verificando, mostramos pantalla de carga para que no vea la herramienta ni un segundo
   if (verificandoAcceso) {
     return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>;
   }
@@ -45,69 +42,66 @@ export default function ProduccionIndividual() {
     try {
       const res = await fetch("https://actarium-yqof.onrender.com/extraer-datos", { method: "POST", body: formData });
       const data = await res.json();
-      setDatos(data);
+      setAvisos(data.avisos || []);
       setPaso(2);
-    } catch (err) { 
+    } catch (err) {
       console.error(err);
-      alert("Error de conexión con el servidor."); 
+      alert("Error de conexión con el servidor.");
     }
     setCargando(false);
   };
 
-  const handleChange = (campo, valor) => {
-    setDatos({ ...datos, [campo]: valor });
+  const handleChange = (index, campo, valor) => {
+    const nuevosAvisos = [...avisos];
+    nuevosAvisos[index][campo] = valor;
+    setAvisos(nuevosAvisos);
+  };
+
+  const aplicarFechaGlobal = () => {
+    if (!fechaGlobal) return;
+    const nuevosAvisos = avisos.map(aviso => ({ ...aviso, lugar_fecha_firma: fechaGlobal }));
+    setAvisos(nuevosAvisos);
+    alert("Fecha aplicada a todos los avisos.");
   };
 
   const descargar = async () => {
     setCargando(true);
-    
     try {
-      // Obtenemos al usuario que inició sesión
       const { data: { user } } = await supabase.auth.getUser();
-      const datosFinales = { ...datos, user_id: user?.id }; // Añadimos su ID secreto
+      const payload = { avisos, user_id: user?.id };
 
       const res = await fetch("https://actarium-yqof.onrender.com/generar-final", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(datosFinales),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
-      
+
       const respuestaBackend = await res.json();
-      
-      if(respuestaBackend.success) {
-        // Como ya está en la Bóveda, lo descargamos directo de Supabase
+
+      if (respuestaBackend.success) {
         const { data, error } = await supabase.storage.from('avisos_generados').download(respuestaBackend.archivo);
-        
         if (!error) {
           const url = window.URL.createObjectURL(data);
           const a = document.createElement("a");
-          a.href = url; a.download = respuestaBackend.nombre_descarga; 
-          a.click();
-          
-          // Le damos 2 segundos al navegador para descargar antes de sacarnos al lobby
-          setTimeout(() => {
-            window.location.href = "/terminal";
-          }, 2000);
-
+          a.href = url; a.download = respuestaBackend.nombre_descarga; a.click();
+          setTimeout(() => { window.location.href = "/terminal"; }, 2000);
         } else {
-          alert("El archivo se generó, pero no se pudo descargar automáticamente.");
-          window.location.href = "/terminal";
+          alert("Error al descargar el archivo desde la bóveda.");
         }
       } else {
-        alert("Hubo un error al generar el archivo.");
+        alert("Hubo un error al generar el archivo final.");
       }
     } catch (err) {
       console.error(err);
       alert("Error al conectar con el servidor en la nube.");
     }
-    
     setCargando(false);
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-[#334155]">
+    <div className="min-h-screen bg-[#FDFDFD] text-[#334155] pb-20">
       <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
-            <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
+          <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
+          <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
         </div>
         <Link href="/terminal" className="text-xs uppercase tracking-widest text-gray-400 hover:text-white">← Salir al Lobby</Link>
       </nav>
@@ -115,127 +109,138 @@ export default function ProduccionIndividual() {
       <main className="max-w-[1400px] mx-auto py-10 px-6">
         {paso === 1 ? (
           <div className="text-center mt-20 max-w-3xl mx-auto">
-             <h2 className="text-4xl font-serif text-[#0F172A] mb-4">Cargar Escritura</h2>
-             <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento .docx</p>
-             <div className="bg-white border-2 border-dashed border-gray-200 p-24 rounded-2xl relative hover:border-[#D4AF37] transition-all">
-                <input type="file" accept=".docx" onChange={manejarSubida} className="absolute inset-0 opacity-0 cursor-pointer" />
-                <p className="text-gray-400 font-medium">{cargando ? "Extrayendo más de 30 variables legales..." : "Arrastre aquí el archivo"}</p>
-             </div>
+            <h2 className="text-4xl font-serif text-[#0F172A] mb-4">Cargar Escritura</h2>
+            <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento .docx</p>
+            <div className="bg-white border-2 border-dashed border-gray-200 p-24 rounded-2xl relative hover:border-[#D4AF37] transition-all">
+              <input type="file" accept=".docx" onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+              <p className="text-gray-400 font-medium">{cargando ? "Analizando escritura de alta complejidad..." : "Arrastre aquí el archivo"}</p>
+            </div>
           </div>
         ) : (
           <div className="animate-in fade-in duration-500">
             <header className="flex justify-between items-end mb-8 border-b pb-6">
               <div>
-                <h2 className="text-3xl font-serif text-[#0F172A]">Auditoría Integral del Aviso</h2>
-                <p className="text-sm text-gray-500 mt-1">Valide la información extraída. Los campos en <span className="text-orange-500 font-bold">naranja</span> requieren su revisión manual.</p>
+                <h2 className="text-3xl font-serif text-[#0F172A] mb-2">Auditoría Integral ({avisos.length} Avisos)</h2>
+                <p className="text-sm text-gray-500">Valide la información extraída. Si es una subdivisión, verá múltiples paneles abajo.</p>
               </div>
               <button onClick={descargar} className="bg-[#0F172A] text-white px-8 py-3 rounded font-bold shadow-lg hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all">
-                {cargando ? "Procesando..." : "Generar Archivo Oficial"}
+                {cargando ? "Procesando y Guardando..." : avisos.length > 1 ? "Descargar Paquete ZIP" : "Generar Archivo Oficial"}
               </button>
             </header>
 
-            {/* Layout de 3 Columnas para Alta Densidad de Datos */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              
-              {/* COLUMNA 1: ADMINISTRATIVO Y NOTARÍA */}
-              <div className="space-y-6">
-                <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">I. Administrativo</h3>
-                  <div className="space-y-3">
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Escritura Número</label><input type="text" value={datos?.escritura_numero || ""} onChange={e => handleChange("escritura_numero", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-gray-50" /></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Lugar y Fecha de Firma</label><input type="text" value={datos?.lugar_fecha_firma || ""} onChange={e => handleChange("lugar_fecha_firma", e.target.value)} className={`w-full p-2 border-b outline-none ${!datos?.lugar_fecha_firma ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`} /></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Naturaleza del Acto</label><input type="text" value={datos?.naturaleza_acto || ""} onChange={e => handleChange("naturaleza_acto", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-gray-50" /></div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Cuenta Predial</label><input type="text" value={datos?.cuenta_predial || ""} onChange={e => handleChange("cuenta_predial", e.target.value)} className="w-full p-2 border-b outline-none bg-gray-50" /></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Folio Real RPP</label><input type="text" value={datos?.folio_real || ""} onChange={e => handleChange("folio_real", e.target.value)} className={`w-full p-2 border-b outline-none ${!datos?.folio_real ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`} /></div>
-                    </div>
-                  </div>
-                  
-                  {/* NUEVA SECCIÓN: DATOS DE LA NOTARÍA */}
-                  <div className="mt-6 pt-4 border-t border-gray-100">
-                    <h4 className="text-[10px] uppercase font-bold text-[#D4AF37] mb-3">Datos del Fedatario</h4>
-                    <div className="space-y-3">
-                      <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre del Notario</label><input type="text" value={datos?.nombre_notario || ""} onChange={e => handleChange("nombre_notario", e.target.value)} className={`w-full p-2 border-b outline-none ${!datos?.nombre_notario ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`} /></div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Notaría No.</label><input type="text" value={datos?.notaria_numero || ""} onChange={e => handleChange("notaria_numero", e.target.value)} className={`w-full p-2 border-b outline-none ${!datos?.notaria_numero ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`} /></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Correo Electrónico</label><input type="text" value={datos?.correo_notario || ""} onChange={e => handleChange("correo_notario", e.target.value)} className="w-full p-2 border-b outline-none bg-gray-50" /></div>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">IV. Liquidación</h3>
-                  <div className="space-y-3">
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Valor de Operación</label><input type="text" value={datos?.valor_operacion || ""} onChange={e => handleChange("valor_operacion", e.target.value)} className="w-full p-2 bg-[#0F172A] text-[#D4AF37] font-mono rounded" /></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Impuesto a Pagar</label><input type="text" value={datos?.impuesto_monto || ""} onChange={e => handleChange("impuesto_monto", e.target.value)} className="w-full p-2 border rounded bg-gray-100 font-mono" /></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Total Liquidación</label><input type="text" value={datos?.total_liquidacion || ""} onChange={e => handleChange("total_liquidacion", e.target.value)} className="w-full p-2 border border-[#D4AF37] rounded font-mono font-bold" /></div>
-                  </div>
-                </section>
+            {/* PANEL DE FECHA GLOBAL */}
+            <div className="mb-12 p-6 bg-[#0F172A] rounded-2xl flex flex-col md:flex-row items-end gap-4 shadow-lg border border-[#D4AF37]/30">
+              <div className="flex-1 w-full">
+                <label className="text-[#D4AF37] text-[10px] font-bold uppercase tracking-widest mb-2 block">Fecha de Cierre Manual (Aplica a todos los avisos)</label>
+                <input type="text" value={fechaGlobal} onChange={e => setFechaGlobal(e.target.value)} placeholder="Ej. Zapopan, Jalisco a 15 de Mayo de 2026" className="w-full p-3 rounded bg-white/10 text-white outline-none focus:border-[#D4AF37] border border-transparent text-sm placeholder-gray-500" />
               </div>
-
-              {/* COLUMNA 2: LAS PARTES */}
-              <div className="space-y-6">
-                <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">II. Transmitente (Vendedor)</h3>
-                  <div className="space-y-3">
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre(s) Completo(s)</label><textarea rows="2" value={datos?.nombre_vendedor || ""} onChange={e => handleChange("nombre_vendedor", e.target.value)} className={`w-full p-2 border-b outline-none resize-none ${!datos?.nombre_vendedor ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`}></textarea></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">CURP(s) / RFC(s)</label><textarea rows="2" value={datos?.curp_vendedor || ""} onChange={e => handleChange("curp_vendedor", e.target.value)} className={`w-full p-2 border-b outline-none resize-none ${!datos?.curp_vendedor ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`}></textarea></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Estado Civil</label><input type="text" value={datos?.estado_civil_vendedor || ""} onChange={e => handleChange("estado_civil_vendedor", e.target.value)} className={`w-full p-2 border-b outline-none ${!datos?.estado_civil_vendedor ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`} /></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Domicilio</label><textarea rows="2" value={datos?.domicilio_vendedor || ""} onChange={e => handleChange("domicilio_vendedor", e.target.value)} className={`w-full p-2 border-b outline-none resize-none ${!datos?.domicilio_vendedor ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`}></textarea></div>
-                  </div>
-                </section>
-
-                <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">II. Adquirente (Comprador)</h3>
-                  <div className="space-y-3">
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre(s) Completo(s)</label><textarea rows="2" value={datos?.nombre_comprador || ""} onChange={e => handleChange("nombre_comprador", e.target.value)} className={`w-full p-2 border-b outline-none resize-none ${!datos?.nombre_comprador ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`}></textarea></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">CURP(s) / RFC(s)</label><textarea rows="2" value={datos?.curp_comprador || ""} onChange={e => handleChange("curp_comprador", e.target.value)} className={`w-full p-2 border-b outline-none resize-none ${!datos?.curp_comprador ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`}></textarea></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Estado Civil</label><input type="text" value={datos?.estado_civil_comprador || ""} onChange={e => handleChange("estado_civil_comprador", e.target.value)} className={`w-full p-2 border-b outline-none ${!datos?.estado_civil_comprador ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`} /></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400">Lugar y Fecha de Nacimiento</label><input type="text" value={datos?.nacimiento_comprador || ""} onChange={e => handleChange("nacimiento_comprador", e.target.value)} className={`w-full p-2 border-b outline-none ${!datos?.nacimiento_comprador ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`} /></div>
-                  </div>
-                </section>
-              </div>
-
-              {/* COLUMNA 3: INMUEBLE Y ANTECEDENTES */}
-              <div className="space-y-6">
-                <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-full">
-                  <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">III. El Inmueble</h3>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3 mb-2 p-3 bg-gray-50 rounded border border-gray-200">
-                      <div>
-                        <label className="text-[10px] uppercase font-bold text-[#0F172A]">Clasificación</label>
-                        <select value={datos?.clasificacion_inmueble || ""} onChange={e => handleChange("clasificacion_inmueble", e.target.value)} className="w-full mt-1 p-2 bg-white border border-gray-200 rounded outline-none focus:border-[#D4AF37] text-xs">
-                          <option value="">Seleccione...</option>
-                          <option value="Urbano">Urbano</option>
-                          <option value="Rústico">Rústico</option>
-                          <option value="Baldío">Baldío</option>
-                          <option value="Construido">Construido</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] uppercase font-bold text-[#0F172A]">Lo transmitido es</label>
-                        <select value={datos?.lo_transmitido || ""} onChange={e => handleChange("lo_transmitido", e.target.value)} className="w-full mt-1 p-2 bg-white border border-gray-200 rounded outline-none focus:border-[#D4AF37] text-xs">
-                          <option value="">Seleccione...</option>
-                          <option value="Fracción">Fracción</option>
-                          <option value="Resto">Resto</option>
-                          <option value="Totalidad">Totalidad</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] uppercase font-bold text-gray-400">Ubicación, Medidas y Linderos</label>
-                      <textarea rows="10" value={datos?.ubicacion_inmueble || ""} onChange={e => handleChange("ubicacion_inmueble", e.target.value)} className="w-full mt-1 p-3 bg-gray-50 border rounded outline-none focus:border-[#D4AF37] text-sm leading-relaxed"></textarea>
-                    </div>
-                    <div>
-                      <label className="text-[10px] uppercase font-bold text-gray-400">Antecedentes de Adquisición (RPP)</label>
-                      <textarea rows="4" value={datos?.antecedentes_registro || ""} onChange={e => handleChange("antecedentes_registro", e.target.value)} placeholder="Ej. Adquirido mediante Escritura 1234, Folio Real 56789..." className={`w-full mt-1 p-3 border rounded outline-none text-sm ${!datos?.antecedentes_registro ? 'bg-orange-50 border-orange-200' : 'bg-gray-50'}`}></textarea>
-                    </div>
-                  </div>
-                </section>
-              </div>
-
+              <button onClick={aplicarFechaGlobal} className="w-full md:w-auto bg-[#D4AF37] text-[#0F172A] px-6 py-3 rounded font-bold text-xs uppercase tracking-widest hover:bg-white transition-colors">
+                Aplicar a todos
+              </button>
             </div>
+
+            {/* RENDERIZADO DE CADA AVISO ENCONTRADO */}
+            {avisos.map((aviso, index) => (
+              <div key={index} className="mb-16 p-8 bg-white border-2 border-gray-200 rounded-3xl shadow-sm relative">
+
+                <div className="absolute -top-4 left-8 bg-[#0F172A] text-[#D4AF37] px-6 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest shadow-md">
+                  Aviso {index + 1} de {avisos.length}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-4">
+                  {/* COL 1: ADMIN Y NOTARÍA */}
+                  <div className="space-y-6">
+                    <section className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+                      <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">I. Administrativo</h3>
+                      <div className="space-y-3">
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Escritura Número</label><input type="text" value={aviso.escritura_numero || ""} onChange={e => handleChange(index, "escritura_numero", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-transparent" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Lugar y Fecha de Firma</label><input type="text" value={aviso.lugar_fecha_firma || ""} onChange={e => handleChange(index, "lugar_fecha_firma", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-transparent text-orange-600 font-medium" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Naturaleza del Acto</label><input type="text" value={aviso.naturaleza_acto || ""} onChange={e => handleChange(index, "naturaleza_acto", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-transparent" /></div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div><label className="text-[10px] uppercase font-bold text-gray-500">Cuenta Predial</label><input type="text" value={aviso.cuenta_predial || ""} onChange={e => handleChange(index, "cuenta_predial", e.target.value)} className="w-full p-2 border-b outline-none bg-transparent" /></div>
+                          <div><label className="text-[10px] uppercase font-bold text-gray-500">Clave Catastral</label><input type="text" value={aviso.clave_catastral || ""} onChange={e => handleChange(index, "clave_catastral", e.target.value)} className="w-full p-2 border-b outline-none bg-transparent" /></div>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 pt-4 border-t border-gray-200">
+                        <h4 className="text-[10px] uppercase font-bold text-[#D4AF37] mb-3">Datos del Fedatario</h4>
+                        <div className="space-y-3">
+                          <div><label className="text-[10px] uppercase font-bold text-gray-500">Nombre del Notario</label><input type="text" value={aviso.nombre_notario || ""} onChange={e => handleChange(index, "nombre_notario", e.target.value)} className="w-full p-2 border-b outline-none bg-transparent" /></div>
+                          <div><label className="text-[10px] uppercase font-bold text-gray-500">Certificado del Notario (Adscripción)</label><textarea rows="3" value={aviso.certificado_notario || ""} onChange={e => handleChange(index, "certificado_notario", e.target.value)} className="w-full mt-1 p-2 border rounded outline-none text-xs bg-white"></textarea></div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+                      <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">IV. Liquidación</h3>
+                      <div className="space-y-3">
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Valor de Operación</label><input type="text" value={aviso.valor_operacion || ""} onChange={e => handleChange(index, "valor_operacion", e.target.value)} className="w-full p-2 bg-[#0F172A] text-[#D4AF37] font-mono rounded" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Impuesto a Pagar</label><input type="text" value={aviso.impuesto_monto || ""} onChange={e => handleChange(index, "impuesto_monto", e.target.value)} className="w-full p-2 border rounded bg-white font-mono" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Total Liquidación</label><input type="text" value={aviso.total_liquidacion || ""} onChange={e => handleChange(index, "total_liquidacion", e.target.value)} className="w-full p-2 border border-[#D4AF37] rounded font-mono font-bold bg-white" /></div>
+                      </div>
+                    </section>
+                  </div>
+
+                  {/* COL 2: LAS PARTES */}
+                  <div className="space-y-6">
+                    <section className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                      <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">II. Transmitente (Vendedor)</h3>
+                      <div className="space-y-3">
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre(s) Completo(s)</label><textarea rows="2" value={aviso.nombre_vendedor || ""} onChange={e => handleChange(index, "nombre_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Estado civil, edad, etc.)</label><textarea rows="3" value={aviso.generales_vendedor || ""} onChange={e => handleChange(index, "generales_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-xs leading-relaxed"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Domicilio</label><textarea rows="2" value={aviso.domicilio_vendedor || ""} onChange={e => handleChange(index, "domicilio_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">RFC / CURP</label><textarea rows="1" value={aviso.curp_vendedor || ""} onChange={e => handleChange(index, "curp_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 font-mono"></textarea></div>
+                      </div>
+                    </section>
+
+                    <section className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                      <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">II. Adquirente (Comprador)</h3>
+                      <div className="space-y-3">
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre(s) Completo(s)</label><textarea rows="2" value={aviso.nombre_comprador || ""} onChange={e => handleChange(index, "nombre_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Estado civil, edad, etc.)</label><textarea rows="3" value={aviso.generales_comprador || ""} onChange={e => handleChange(index, "generales_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-xs leading-relaxed"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Domicilio</label><textarea rows="2" value={aviso.domicilio_comprador || ""} onChange={e => handleChange(index, "domicilio_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">RFC / CURP</label><textarea rows="1" value={aviso.curp_comprador || ""} onChange={e => handleChange(index, "curp_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 font-mono"></textarea></div>
+                      </div>
+                    </section>
+                  </div>
+
+                  {/* COL 3: INMUEBLE Y ANTECEDENTES */}
+                  <div className="space-y-6">
+                    <section className="bg-[#FEFCE8]/50 p-6 rounded-xl shadow-sm border border-[#D4AF37]/30 h-full">
+                      <h3 className="text-[#0F172A] text-xs font-bold uppercase tracking-widest mb-4">III. El Inmueble y Antecedentes</h3>
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3 mb-2 p-3 bg-white rounded border border-gray-200">
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-[#0F172A]">Clasificación</label>
+                            <select value={aviso.clasificacion_inmueble || ""} onChange={e => handleChange(index, "clasificacion_inmueble", e.target.value)} className="w-full mt-1 p-2 bg-gray-50 border border-gray-100 rounded outline-none focus:border-[#D4AF37] text-xs">
+                              <option value="">Seleccione...</option><option value="Urbano">Urbano</option><option value="Rústico">Rústico</option><option value="Baldío">Baldío</option><option value="Construido">Construido</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-[#0F172A]">Lo transmitido es</label>
+                            <select value={aviso.lo_transmitido || ""} onChange={e => handleChange(index, "lo_transmitido", e.target.value)} className="w-full mt-1 p-2 bg-gray-50 border border-gray-100 rounded outline-none focus:border-[#D4AF37] text-xs">
+                              <option value="">Seleccione...</option><option value="Fracción">Fracción</option><option value="Resto">Resto</option><option value="Totalidad">Totalidad</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-gray-500">Municipio (Para Ruteo)</label>
+                          <input type="text" value={aviso.municipio_inmueble || ""} onChange={e => handleChange(index, "municipio_inmueble", e.target.value)} className="w-full mt-1 p-2 bg-white border border-[#D4AF37] rounded outline-none font-bold text-sm text-[#0F172A]" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-gray-500">Ubicación, Medidas y Linderos</label>
+                          <textarea rows="12" value={aviso.ubicacion_inmueble || ""} onChange={e => handleChange(index, "ubicacion_inmueble", e.target.value)} className="w-full mt-1 p-3 bg-white border border-gray-200 rounded outline-none focus:border-[#D4AF37] text-[11px] leading-relaxed"></textarea>
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-gray-500">Antecedentes de Adquisición (RPP)</label>
+                          <textarea rows="5" value={aviso.antecedentes_registro || ""} onChange={e => handleChange(index, "antecedentes_registro", e.target.value)} className="w-full mt-1 p-3 bg-white border border-gray-200 rounded outline-none focus:border-[#D4AF37] text-[11px] leading-relaxed"></textarea>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </main>
