@@ -14,10 +14,9 @@ export default function ProduccionIndividual() {
   const [verificandoAcceso, setVerificandoAcceso] = useState(true);
 
   const [paso, setPaso] = useState(1);
-  const [avisos, setAvisos] = useState([]); // Ahora es un arreglo de avisos
+  const [avisos, setAvisos] = useState([]);
   const [cargando, setCargando] = useState(false);
 
-  // Campo de Fecha Global
   const [fechaGlobal, setFechaGlobal] = useState("");
 
   useEffect(() => {
@@ -128,7 +127,6 @@ export default function ProduccionIndividual() {
               </button>
             </header>
 
-            {/* PANEL DE FECHA GLOBAL */}
             <div className="mb-12 p-6 bg-[#0F172A] rounded-2xl flex flex-col md:flex-row items-end gap-4 shadow-lg border border-[#D4AF37]/30">
               <div className="flex-1 w-full">
                 <label className="text-[#D4AF37] text-[10px] font-bold uppercase tracking-widest mb-2 block">Fecha de Cierre Manual (Aplica a todos los avisos)</label>
@@ -139,7 +137,6 @@ export default function ProduccionIndividual() {
               </button>
             </div>
 
-            {/* RENDERIZADO DE CADA AVISO ENCONTRADO */}
             {avisos.map((aviso, index) => (
               <div key={index} className="mb-16 p-8 bg-white border-2 border-gray-200 rounded-3xl shadow-sm relative">
 
@@ -148,7 +145,6 @@ export default function ProduccionIndividual() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-4">
-                  {/* COL 1: ADMIN Y NOTARÍA */}
                   <div className="space-y-6">
                     <section className="bg-gray-50 p-6 rounded-xl border border-gray-100">
                       <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">I. Administrativo</h3>
@@ -169,6 +165,18 @@ export default function ProduccionIndividual() {
                           <div><label className="text-[10px] uppercase font-bold text-gray-500">Certificado del Notario (Adscripción)</label><textarea rows="3" value={aviso.certificado_notario || ""} onChange={e => handleChange(index, "certificado_notario", e.target.value)} className="w-full mt-1 p-2 border rounded outline-none text-xs bg-white"></textarea></div>
                         </div>
                       </div>
+
+                      <div className="mt-4 p-3 bg-[#FEFCE8] border border-[#D4AF37]/50 rounded text-center">
+                        <label className="text-[10px] uppercase font-bold text-[#0F172A] block mb-1">Documento que se anexa</label>
+                        <select value={aviso.se_anexa || "Avalúo Bancario"} onChange={e => handleChange(index, "se_anexa", e.target.value)} className="w-full p-2 border border-[#D4AF37] rounded outline-none focus:ring-2 focus:ring-[#D4AF37] bg-white text-xs font-bold text-center text-[#A16207]">
+                          <option value="Avalúo Bancario">Avalúo Bancario (Por Defecto)</option>
+                          <option value="Deslinde">Deslinde</option>
+                          <option value="Certificado de No Propiedad">Certificado de No Propiedad</option>
+                          <option value="Certificado de no Adeudo">Certificado de no Adeudo</option>
+                          <option value="Ninguno">Ninguno / No Aplica</option>
+                        </select>
+                      </div>
+
                     </section>
 
                     <section className="bg-gray-50 p-6 rounded-xl border border-gray-100">
@@ -181,7 +189,6 @@ export default function ProduccionIndividual() {
                     </section>
                   </div>
 
-                  {/* COL 2: LAS PARTES */}
                   <div className="space-y-6">
                     <section className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                       <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">II. Transmitente (Vendedor)</h3>
@@ -204,7 +211,6 @@ export default function ProduccionIndividual() {
                     </section>
                   </div>
 
-                  {/* COL 3: INMUEBLE Y ANTECEDENTES */}
                   <div className="space-y-6">
                     <section className="bg-[#FEFCE8]/50 p-6 rounded-xl shadow-sm border border-[#D4AF37]/30 h-full">
                       <h3 className="text-[#0F172A] text-xs font-bold uppercase tracking-widest mb-4">III. El Inmueble y Antecedentes</h3>

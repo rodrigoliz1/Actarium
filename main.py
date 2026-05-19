@@ -7,6 +7,7 @@ import os
 import json
 import zipfile
 import unicodedata
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -14,9 +15,15 @@ from openai import OpenAI
 from supabase import create_client, Client
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# --- LLAVES MAESTRAS (Con tipado estricto para evitar errores en VS Code) ---
+app.add_middleware(
+    CORSMiddleware, 
+    allow_origins=["*"], 
+    allow_credentials=False, 
+    allow_methods=["*"], 
+    allow_headers=["*"]
+)
+
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
@@ -25,10 +32,13 @@ ia_client = OpenAI(api_key=OPENAI_API_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def limpiar_texto(texto: str) -> str:
-    if not texto: 
-        return "GENERICO"
+    if not texto: return "GENERICO"
     texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
     return texto.upper().strip()
+
+def limpiar_nombre_archivo(texto: str) -> str:
+    if not texto: return "SN"
+    return re.sub(r'[\\/*?:"<>|]', '-', str(texto)).strip()
 
 def obtener_plantilla_y_municipio(municipio_extraido: str):
     mun = limpiar_texto(municipio_extraido)
@@ -64,7 +74,7 @@ async def extraer_datos(file: UploadFile = File(...)):
                       "curp_comprador": "", "ubicacion_inmueble": "", "antecedentes_registro": "", "valor_operacion": "",
                       "impuesto_monto": "", "total_liquidacion": "", "nombre_notario": "", "notaria_numero": "",
                       "correo_notario": "", "certificado_notario": "", "clasificacion_inmueble": "", "lo_transmitido": "",
-                      "municipio_inmueble": ""
+                      "municipio_inmueble": "", "se_anexa": ""
                     }
                   ]
                 }
@@ -75,14 +85,13 @@ async def extraer_datos(file: UploadFile = File(...)):
                 4. 'generales_vendedor' y 'generales_comprador': Incluye edad, nacionalidad, estado civil, ocupación y origen.
                 5. 'domicilio_vendedor' y 'domicilio_comprador': Extrae la dirección completa de las partes.
                 6. 'clasificacion_inmueble': 'Urbano', 'Rústico', 'Baldío' o 'Construido'. 'lo_transmitido': 'Fracción', 'Resto' o 'Totalidad'.
-                7. ATENCIÓN SUBDIVISIONES: Si la escritura ampara la transmisión de MÚLTIPLES inmuebles, DEBES generar UN objeto completo en el arreglo 'avisos' POR CADA INMUEBLE INDIVIDUAL."""
+                7. ATENCIÓN SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto completo en el arreglo 'avisos' POR CADA INMUEBLE.
+                8. 'se_anexa': Responde estrictamente 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'. Si no especifica, usa 'Avalúo Bancario' por defecto."""
             },
             {"role": "user", "content": texto_completo}
         ]
     )
-    
-    datos_ia = json.loads(respuesta.choices[0].message.content)
-    return datos_ia
+    return json.loads(respuesta.choices[0].message.content)
 
 @app.post("/generar-final")
 async def generar_final(payload: dict):
@@ -96,6 +105,7 @@ async def generar_final(payload: dict):
         clasif = aviso.get("clasificacion_inmueble", "")
         trans = aviso.get("lo_transmitido", "")
         municipio_extraido = aviso.get("municipio_inmueble", "")
+        anexo = aviso.get("se_anexa", "Avalúo Bancario") # Por defecto
         
         aviso["x_urbano"] = "X" if clasif == "Urbano" else " "
         aviso["x_rustico"] = "X" if clasif == "Rústico" else " "
@@ -104,6 +114,11 @@ async def generar_final(payload: dict):
         aviso["x_fraccion"] = "X" if trans == "Fracción" else " "
         aviso["x_resto"] = "X" if trans == "Resto" else " "
         aviso["x_totalidad"] = "X" if trans == "Totalidad" else " "
+        
+        aviso["x_deslinde"] = "X" if anexo == "Deslinde" else " "
+        aviso["x_avaluo"] = "X" if anexo == "Avalúo Bancario" else " "
+        aviso["x_certificado_no_prop"] = "X" if anexo == "Certificado de No Propiedad" else " "
+        aviso["x_certificado_no_adeudo"] = "X" if anexo == "Certificado de no Adeudo" else " "
 
         plantilla_doc, mun_limpio = obtener_plantilla_y_municipio(municipio_extraido)
         if not os.path.exists(plantilla_doc):
@@ -112,7 +127,9 @@ async def generar_final(payload: dict):
         doc = DocxTemplate(plantilla_doc)
         doc.render(aviso)
         
-        num_escritura = aviso.get('escritura_numero', 'SN')
+        num_escritura_raw = aviso.get('escritura_numero', 'SN')
+        num_escritura = limpiar_nombre_archivo(num_escritura_raw)
+
         nombre_oficial = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.docx"
         nombre_unico = f"ATP_{num_escritura}_{mun_limpio}_{timestamp}_{idx+1}.docx" 
         ruta_local = f"temp_{nombre_unico}"
@@ -136,8 +153,9 @@ async def generar_final(payload: dict):
         return {"success": True, "archivo": archivo_data["nombre_unico"], "nombre_descarga": archivo_data["nombre_oficial"]}
     
     else:
-        nombre_zip_descarga = f"Avisos_Subdivision_{num_escritura}.zip"
-        nombre_zip_nube = f"Avisos_Subdivision_{num_escritura}_{timestamp}.zip"
+        num_escritura_zip = limpiar_nombre_archivo(avisos[0].get('escritura_numero', 'SN'))
+        nombre_zip_descarga = f"Avisos_Subdivision_{num_escritura_zip}.zip"
+        nombre_zip_nube = f"Avisos_Subdivision_{num_escritura_zip}_{timestamp}.zip"
         
         with zipfile.ZipFile(nombre_zip_nube, 'w') as zipf:
             for arch in archivos_generados:
@@ -178,7 +196,7 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 messages=[
                     {
                         "role": "system", 
-                        "content": "Eres el Abogado Proyectista Jefe. Extrae los datos en JSON estructurado bajo la clave 'avisos' (arreglo de objetos). REGLAS: 1. 'ubicacion_inmueble', 'antecedentes_registro' y 'certificado_notario' deben ser LITERALES. 2. 'clasificacion_inmueble' ('Urbano', 'Rústico', 'Baldío', 'Construido'). 3. 'lo_transmitido' ('Fracción', 'Resto', 'Totalidad'). 4. 'municipio_inmueble' (Identifica municipio). 5. SUBDIVISIONES: Si se transmiten múltiples inmuebles, genera un objeto por cada uno."
+                        "content": "Eres el Abogado Proyectista Jefe. Extrae los datos en JSON estructurado bajo la clave 'avisos' (arreglo de objetos). REGLAS: 1. 'ubicacion_inmueble', 'antecedentes_registro' y 'certificado_notario' deben ser LITERALES. 2. 'clasificacion_inmueble' ('Urbano', 'Rústico', 'Baldío', 'Construido'). 3. 'lo_transmitido' ('Fracción', 'Resto', 'Totalidad'). 4. 'municipio_inmueble' (Identifica municipio). 5. 'se_anexa' ('Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'). 6. SUBDIVISIONES: Si se transmiten múltiples inmuebles, genera un objeto por cada uno."
                     },
                     {"role": "user", "content": texto_completo}
                 ]
@@ -190,6 +208,7 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 clasif = aviso_ia.get("clasificacion_inmueble", "")
                 trans = aviso_ia.get("lo_transmitido", "")
                 municipio_extraido = aviso_ia.get("municipio_inmueble", "")
+                anexo = aviso_ia.get("se_anexa", "Avalúo Bancario")
                 
                 aviso_ia["x_urbano"] = "X" if clasif == "Urbano" else " "
                 aviso_ia["x_rustico"] = "X" if clasif == "Rústico" else " "
@@ -198,6 +217,11 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 aviso_ia["x_fraccion"] = "X" if trans == "Fracción" else " "
                 aviso_ia["x_resto"] = "X" if trans == "Resto" else " "
                 aviso_ia["x_totalidad"] = "X" if trans == "Totalidad" else " "
+
+                aviso_ia["x_deslinde"] = "X" if anexo == "Deslinde" else " "
+                aviso_ia["x_avaluo"] = "X" if anexo == "Avalúo Bancario" else " "
+                aviso_ia["x_certificado_no_prop"] = "X" if anexo == "Certificado de No Propiedad" else " "
+                aviso_ia["x_certificado_no_adeudo"] = "X" if anexo == "Certificado de no Adeudo" else " "
                 
                 plantilla_doc, mun_limpio = obtener_plantilla_y_municipio(municipio_extraido)
                 if not os.path.exists(plantilla_doc):
@@ -206,8 +230,9 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 doc = DocxTemplate(plantilla_doc)
                 doc.render(aviso_ia)
                 
-                num_escritura = aviso_ia.get('escritura_numero', 'SN')
-                nombre_limpio = archivo.filename.replace(".docx", "")
+                num_escritura_raw = aviso_ia.get('escritura_numero', 'SN')
+                num_escritura = limpiar_nombre_archivo(num_escritura_raw)
+                nombre_limpio = limpiar_nombre_archivo(archivo.filename.replace(".docx", ""))
                 
                 nombre_archivo_final = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.docx" if len(datos_ia.get("avisos", [])) > 1 else f"ATP_{num_escritura}_{mun_limpio}.docx"
                 ruta_en_zip = f"{mun_limpio}/{nombre_limpio}/{nombre_archivo_final}"
