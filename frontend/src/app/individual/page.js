@@ -58,9 +58,9 @@ export default function ProduccionIndividual() {
 
   const aplicarFechaGlobal = () => {
     if (!fechaGlobal) return;
-    const nuevosAvisos = avisos.map(aviso => ({ ...aviso, lugar_fecha_firma: fechaGlobal }));
+    const nuevosAvisos = avisos.map(aviso => ({ ...aviso, fecha_cierre: fechaGlobal }));
     setAvisos(nuevosAvisos);
-    alert("Fecha aplicada a todos los avisos.");
+    alert("Fecha de cierre aplicada a todos los avisos.");
   };
 
   const descargar = async () => {
@@ -150,8 +150,10 @@ export default function ProduccionIndividual() {
                       <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">I. Administrativo</h3>
                       <div className="space-y-3">
                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Escritura Número</label><input type="text" value={aviso.escritura_numero || ""} onChange={e => handleChange(index, "escritura_numero", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-transparent" /></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Lugar y Fecha de Firma</label><input type="text" value={aviso.lugar_fecha_firma || ""} onChange={e => handleChange(index, "lugar_fecha_firma", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-transparent text-orange-600 font-medium" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Lugar y Fecha de Firma</label><input type="text" value={aviso.lugar_fecha_firma || ""} onChange={e => handleChange(index, "lugar_fecha_firma", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-transparent font-medium" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500 text-orange-600">Fecha de Cierre (Final del docto)</label><input type="text" value={aviso.fecha_cierre || ""} onChange={e => handleChange(index, "fecha_cierre", e.target.value)} className="w-full p-2 border-b outline-none focus:border-orange-500 bg-orange-50 text-orange-700 font-medium" /></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Naturaleza del Acto</label><input type="text" value={aviso.naturaleza_acto || ""} onChange={e => handleChange(index, "naturaleza_acto", e.target.value)} className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-transparent" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Fecha de Resolución Adjudicatoria</label><input type="text" value={aviso.fecha_resolucion || ""} onChange={e => handleChange(index, "fecha_resolucion", e.target.value)} placeholder="Dejar en blanco si no aplica" className="w-full p-2 border-b outline-none focus:border-[#D4AF37] bg-transparent" /></div>
                         <div className="grid grid-cols-2 gap-2">
                           <div><label className="text-[10px] uppercase font-bold text-gray-500">Cuenta Predial</label><input type="text" value={aviso.cuenta_predial || ""} onChange={e => handleChange(index, "cuenta_predial", e.target.value)} className="w-full p-2 border-b outline-none bg-transparent" /></div>
                           <div><label className="text-[10px] uppercase font-bold text-gray-500">Clave Catastral</label><input type="text" value={aviso.clave_catastral || ""} onChange={e => handleChange(index, "clave_catastral", e.target.value)} className="w-full p-2 border-b outline-none bg-transparent" /></div>
@@ -180,11 +182,35 @@ export default function ProduccionIndividual() {
                     </section>
 
                     <section className="bg-gray-50 p-6 rounded-xl border border-gray-100">
-                      <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">IV. Liquidación</h3>
+                      <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">IV. Liquidación y Valores</h3>
                       <div className="space-y-3">
                         <div><label className="text-[10px] uppercase font-bold text-gray-500">Valor de Operación</label><input type="text" value={aviso.valor_operacion || ""} onChange={e => handleChange(index, "valor_operacion", e.target.value)} className="w-full p-2 bg-[#0F172A] text-[#D4AF37] font-mono rounded" /></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Impuesto a Pagar</label><input type="text" value={aviso.impuesto_monto || ""} onChange={e => handleChange(index, "impuesto_monto", e.target.value)} className="w-full p-2 border rounded bg-white font-mono" /></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Total Liquidación</label><input type="text" value={aviso.total_liquidacion || ""} onChange={e => handleChange(index, "total_liquidacion", e.target.value)} className="w-full p-2 border border-[#D4AF37] rounded font-mono font-bold bg-white" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-500">Valor de Avalúo</label><input type="text" value={aviso.valor_avaluo || ""} onChange={e => handleChange(index, "valor_avaluo", e.target.value)} className="w-full p-2 bg-white border border-gray-200 font-mono rounded" /></div>
+
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[10px] uppercase font-bold text-gray-500">Valor Catastral</label>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={aviso.valor_catastral !== "" && aviso.valor_catastral === aviso.valor_avaluo}
+                                onChange={(e) => {
+                                  if (e.target.checked) handleChange(index, "valor_catastral", aviso.valor_avaluo || "");
+                                  else handleChange(index, "valor_catastral", "");
+                                }}
+                                id={`catastral-igual-${index}`}
+                                className="cursor-pointer"
+                              />
+                              <label htmlFor={`catastral-igual-${index}`} className="text-[9px] uppercase text-gray-400 cursor-pointer hover:text-[#D4AF37]">¿Igual al avalúo?</label>
+                            </div>
+                          </div>
+                          <input type="text" value={aviso.valor_catastral || ""} onChange={e => handleChange(index, "valor_catastral", e.target.value)} className="w-full p-2 bg-white border border-gray-200 font-mono rounded" />
+                        </div>
+
+                        <div className="border-t border-gray-200 pt-3 mt-3">
+                          <div><label className="text-[10px] uppercase font-bold text-gray-500">Impuesto a Pagar</label><input type="text" value={aviso.impuesto_monto || ""} onChange={e => handleChange(index, "impuesto_monto", e.target.value)} className="w-full p-2 border rounded bg-white font-mono" /></div>
+                          <div className="mt-2"><label className="text-[10px] uppercase font-bold text-gray-500">Total Liquidación</label><input type="text" value={aviso.total_liquidacion || ""} onChange={e => handleChange(index, "total_liquidacion", e.target.value)} className="w-full p-2 border border-[#D4AF37] rounded font-mono font-bold bg-[#FEFCE8]" /></div>
+                        </div>
                       </div>
                     </section>
                   </div>
@@ -194,7 +220,8 @@ export default function ProduccionIndividual() {
                       <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">II. Transmitente (Vendedor)</h3>
                       <div className="space-y-3">
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre(s) Completo(s)</label><textarea rows="2" value={aviso.nombre_vendedor || ""} onChange={e => handleChange(index, "nombre_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Estado civil, edad, etc.)</label><textarea rows="3" value={aviso.generales_vendedor || ""} onChange={e => handleChange(index, "generales_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-xs leading-relaxed"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Lugar y Fecha de Nac.</label><input type="text" value={aviso.nacimiento_vendedor || ""} onChange={e => handleChange(index, "nacimiento_vendedor", e.target.value)} className="w-full p-2 border-b outline-none bg-gray-50 text-xs" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Estado civil, ocupación)</label><textarea rows="3" value={aviso.generales_vendedor || ""} onChange={e => handleChange(index, "generales_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-xs leading-relaxed"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Domicilio</label><textarea rows="2" value={aviso.domicilio_vendedor || ""} onChange={e => handleChange(index, "domicilio_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">RFC / CURP</label><textarea rows="1" value={aviso.curp_vendedor || ""} onChange={e => handleChange(index, "curp_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 font-mono"></textarea></div>
                       </div>
@@ -204,7 +231,8 @@ export default function ProduccionIndividual() {
                       <h3 className="text-[#D4AF37] text-xs font-bold uppercase tracking-widest mb-4">II. Adquirente (Comprador)</h3>
                       <div className="space-y-3">
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre(s) Completo(s)</label><textarea rows="2" value={aviso.nombre_comprador || ""} onChange={e => handleChange(index, "nombre_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Estado civil, edad, etc.)</label><textarea rows="3" value={aviso.generales_comprador || ""} onChange={e => handleChange(index, "generales_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-xs leading-relaxed"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Lugar y Fecha de Nac.</label><input type="text" value={aviso.nacimiento_comprador || ""} onChange={e => handleChange(index, "nacimiento_comprador", e.target.value)} className="w-full p-2 border-b outline-none bg-gray-50 text-xs" /></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Estado civil, ocupación)</label><textarea rows="3" value={aviso.generales_comprador || ""} onChange={e => handleChange(index, "generales_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-xs leading-relaxed"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Domicilio</label><textarea rows="2" value={aviso.domicilio_comprador || ""} onChange={e => handleChange(index, "domicilio_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">RFC / CURP</label><textarea rows="1" value={aviso.curp_comprador || ""} onChange={e => handleChange(index, "curp_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 font-mono"></textarea></div>
                       </div>
@@ -230,8 +258,12 @@ export default function ProduccionIndividual() {
                           </div>
                         </div>
                         <div>
+                          <label className="text-[10px] uppercase font-bold text-gray-500">Uso del Inmueble</label>
+                          <input type="text" value={aviso.uso_inmueble || ""} onChange={e => handleChange(index, "uso_inmueble", e.target.value)} placeholder="Ej. Casa Habitación, Industrial..." className="w-full mt-1 p-2 bg-white border border-[#D4AF37]/50 rounded outline-none font-bold text-sm text-[#0F172A]" />
+                        </div>
+                        <div>
                           <label className="text-[10px] uppercase font-bold text-gray-500">Municipio (Para Ruteo)</label>
-                          <input type="text" value={aviso.municipio_inmueble || ""} onChange={e => handleChange(index, "municipio_inmueble", e.target.value)} className="w-full mt-1 p-2 bg-white border border-[#D4AF37] rounded outline-none font-bold text-sm text-[#0F172A]" />
+                          <input type="text" value={aviso.municipio_inmueble || ""} onChange={e => handleChange(index, "municipio_inmueble", e.target.value)} className="w-full mt-1 p-2 bg-white border border-gray-200 rounded outline-none text-sm text-[#0F172A]" />
                         </div>
                         <div>
                           <label className="text-[10px] uppercase font-bold text-gray-500">Ubicación, Medidas y Linderos</label>

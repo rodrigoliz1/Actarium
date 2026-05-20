@@ -49,6 +49,32 @@ def obtener_plantilla_y_municipio(municipio_extraido: str):
     elif "TONAL" in mun: return "Plantilla_Tonala.docx", "TONALA"
     else: return "Plantilla_Generica.docx", mun if mun and mun != "GENERICO" else "GENERICO"
 
+PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. PROHIBIDO RESUMIR Y NO TE LIMITES EN NADA DE EXTENSIÓN EN CONTENIDO, HAZLO LO MÁS PROFESIONAL POSIBLE. Extrae los datos en JSON con la siguiente estructura estricta:
+{
+  "avisos": [
+    {
+      "escritura_numero": "", "cuenta_predial": "", "clave_catastral": "", "lugar_fecha_firma": "", "fecha_cierre": "", "fecha_resolucion": "",
+      "naturaleza_acto": "", 
+      "nombre_vendedor": "", "nacimiento_vendedor": "", "domicilio_vendedor": "", "generales_vendedor": "", "curp_vendedor": "", 
+      "nombre_comprador": "", "nacimiento_comprador": "", "domicilio_comprador": "", "generales_comprador": "", "curp_comprador": "", 
+      "ubicacion_inmueble": "", "uso_inmueble": "", "antecedentes_registro": "", 
+      "valor_operacion": "", "valor_avaluo": "", "valor_catastral": "",
+      "impuesto_monto": "", "total_liquidacion": "", 
+      "nombre_notario": "", "notaria_numero": "", "correo_notario": "", "certificado_notario": "", 
+      "clasificacion_inmueble": "", "lo_transmitido": "", "municipio_inmueble": "", "se_anexa": ""
+    }
+  ]
+}
+REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR Y NO TE LIMITES EN NADA DE EXTENSIÓN EN CONTENIDO, HAZLO LO MÁS PROFESIONAL POSIBLE):
+1. MÚLTIPLES PERSONAS: Si hay 2 o más transmitentes/adquirentes, EXTRAE TODOS SUS NOMBRES, RFC, DOMICILIOS y GENERALES unidos por comas.
+2. CERO INVENTOS: En 'generales' NO alucines edades ni datos. Si no menciona la edad, no la pongas.
+3. NACIMIENTOS: Busca explícitamente el "lugar y fecha de nacimiento" de ambas partes.
+4. VALORES: Busca y extrae por separado el Valor de Operación, Valor de Avalúo y Valor Catastral. Si dice 'Total', ponlo en 'total_liquidacion'.
+5. ANTECEDENTES Y RESOLUCIONES: Copia el antecedente de propiedad LITERAL. Extrae la 'fecha_resolucion' solo si es una adjudicación o se menciona.
+6. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble' (ej. Casa Habitación, Industrial).
+7. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
+8. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
+
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...)):
     ruta_temporal = f"temp_{file.filename}"
@@ -62,32 +88,7 @@ async def extraer_datos(file: UploadFile = File(...)):
         model="gpt-4o-mini",
         response_format={ "type": "json_object" },
         messages=[
-            {
-                "role": "system", 
-                "content": """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON con la siguiente estructura estricta:
-                {
-                  "avisos": [
-                    {
-                      "escritura_numero": "", "cuenta_predial": "", "clave_catastral": "", "lugar_fecha_firma": "",
-                      "naturaleza_acto": "", "nombre_vendedor": "", "domicilio_vendedor": "", "generales_vendedor": "",
-                      "curp_vendedor": "", "nombre_comprador": "", "domicilio_comprador": "", "generales_comprador": "",
-                      "curp_comprador": "", "ubicacion_inmueble": "", "antecedentes_registro": "", "valor_operacion": "",
-                      "impuesto_monto": "", "total_liquidacion": "", "nombre_notario": "", "notaria_numero": "",
-                      "correo_notario": "", "certificado_notario": "", "clasificacion_inmueble": "", "lo_transmitido": "",
-                      "municipio_inmueble": "", "se_anexa": ""
-                    }
-                  ]
-                }
-                REGLAS DE ORO (PROHIBIDO RESUMIR):
-                1. 'ubicacion_inmueble': COPIA TEXTUALMENTE toda la descripción, medidas y linderos del inmueble.
-                2. 'antecedentes_registro': COPIA TEXTUALMENTE el antecedente de propiedad.
-                3. 'certificado_notario': COPIA TEXTUALMENTE la adscripción del notario (ej. Notario Público Titular número...).
-                4. 'generales_vendedor' y 'generales_comprador': Incluye edad, nacionalidad, estado civil, ocupación y origen.
-                5. 'domicilio_vendedor' y 'domicilio_comprador': Extrae la dirección completa de las partes.
-                6. 'clasificacion_inmueble': 'Urbano', 'Rústico', 'Baldío' o 'Construido'. 'lo_transmitido': 'Fracción', 'Resto' o 'Totalidad'.
-                7. ATENCIÓN SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto completo en el arreglo 'avisos' POR CADA INMUEBLE.
-                8. 'se_anexa': Responde estrictamente 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'. Si no especifica, usa 'Avalúo Bancario' por defecto."""
-            },
+            {"role": "system", "content": PROMPT_SISTEMA},
             {"role": "user", "content": texto_completo}
         ]
     )
@@ -105,7 +106,7 @@ async def generar_final(payload: dict):
         clasif = aviso.get("clasificacion_inmueble", "")
         trans = aviso.get("lo_transmitido", "")
         municipio_extraido = aviso.get("municipio_inmueble", "")
-        anexo = aviso.get("se_anexa", "Avalúo Bancario") # Por defecto
+        anexo = aviso.get("se_anexa", "Avalúo Bancario")
         
         aviso["x_urbano"] = "X" if clasif == "Urbano" else " "
         aviso["x_rustico"] = "X" if clasif == "Rústico" else " "
@@ -194,10 +195,7 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 model="gpt-4o-mini",
                 response_format={ "type": "json_object" },
                 messages=[
-                    {
-                        "role": "system", 
-                        "content": "Eres el Abogado Proyectista Jefe. Extrae los datos en JSON estructurado bajo la clave 'avisos' (arreglo de objetos). REGLAS: 1. 'ubicacion_inmueble', 'antecedentes_registro' y 'certificado_notario' deben ser LITERALES. 2. 'clasificacion_inmueble' ('Urbano', 'Rústico', 'Baldío', 'Construido'). 3. 'lo_transmitido' ('Fracción', 'Resto', 'Totalidad'). 4. 'municipio_inmueble' (Identifica municipio). 5. 'se_anexa' ('Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'). 6. SUBDIVISIONES: Si se transmiten múltiples inmuebles, genera un objeto por cada uno."
-                    },
+                    {"role": "system", "content": PROMPT_SISTEMA},
                     {"role": "user", "content": texto_completo}
                 ]
             )
