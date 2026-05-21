@@ -19,6 +19,8 @@ export default function ProduccionIndividual() {
 
   const [fechaGlobal, setFechaGlobal] = useState("");
 
+  const [mensajeCarga, setMensajeCarga] = useState("Iniciando análisis cognitivo...");
+
   useEffect(() => {
     const revisarLicencia = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -48,6 +50,47 @@ export default function ProduccionIndividual() {
   const manejarSubida = async (e) => {
     if (!e.target.files[0]) return;
     setCargando(true);
+    const manejarSubida = async (e) => {
+      if (!e.target.files[0]) return;
+      setCargando(true);
+
+      // NUEVO: Carrusel de estados para reducir latencia percibida
+      const mensajes = [
+        "Leyendo proemio y antecedentes...",
+        "Identificando a los transmitentes y adquirentes...",
+        "Extrayendo linderos y medidas catastrales...",
+        "Calculando valores de liquidación...",
+        "Estructurando documento final..."
+      ];
+      let i = 0;
+      const intervaloCarga = setInterval(() => {
+        setMensajeCarga(mensajes[i]);
+        i = (i + 1) % mensajes.length;
+      }, 1500); // Cambia el mensaje cada 1.5 segundos
+
+      const formData = new FormData();
+      formData.append("file", e.target.files[0]);
+
+      try {
+        const res = await fetch("https://actarium-yqof.onrender.com/extraer-datos", { method: "POST", body: formData });
+        const data = await res.json();
+
+        const avisosSanitizados = (data.avisos || []).map(aviso => ({
+          ...aviso,
+          clasificacion_inmueble: Array.isArray(aviso.clasificacion_inmueble) ? aviso.clasificacion_inmueble : []
+        }));
+
+        setAvisos(avisosSanitizados);
+        setPaso(2);
+      } catch (err) {
+        console.error(err);
+        alert("Error de conexión con el servidor.");
+      }
+
+      // Detenemos el carrusel cuando termine
+      clearInterval(intervaloCarga);
+      setCargando(false);
+    };
     const formData = new FormData();
     formData.append("file", e.target.files[0]);
 
@@ -144,7 +187,7 @@ export default function ProduccionIndividual() {
             <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento .docx</p>
             <div className="bg-white border-2 border-dashed border-gray-200 p-24 rounded-2xl relative hover:border-[#D4AF37] transition-all">
               <input type="file" accept=".docx" onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-              <p className="text-gray-400 font-medium">{cargando ? "Analizando escritura de alta complejidad..." : "Arrastre aquí el archivo"}</p>
+              <p className="text-gray-400 font-medium">{cargando ? mensajeCarga : "Arrastre aquí el archivo"}</p>
             </div>
           </div>
         ) : (

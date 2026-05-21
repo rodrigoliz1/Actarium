@@ -49,6 +49,25 @@ def obtener_plantilla_y_municipio(municipio_extraido: str):
     elif "TONAL" in mun: return "Plantilla_Tonala.docx", "TONALA"
     else: return "Plantilla_Generica.docx", mun if mun and mun != "GENERICO" else "GENERICO"
 
+# --- NUEVO MOTOR DE EXTRACCIÓN PROFUNDA (PÁRRAFOS + TABLAS) ---
+def extraer_texto_documento(ruta: str) -> str:
+    escritura = Document(ruta)
+    texto = []
+    
+    # 1. Extraer párrafos normales
+    for p in escritura.paragraphs:
+        if p.text.strip():
+            texto.append(p.text.strip())
+            
+    # 2. Extraer contenido dentro de Tablas (Aquí estaban los valores perdidos)
+    for table in escritura.tables:
+        for row in table.rows:
+            fila = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if fila:
+                texto.append(" | ".join(fila)) # Unimos las celdas con un separador
+                
+    return " \n ".join(texto)
+
 PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON con la siguiente estructura estricta:
 {
   "avisos": [
@@ -66,12 +85,12 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON c
   ]
 }
 REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
-1. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "Los señores esposos", "La sociedad mercantil", tal cual vienen en la escritura.
-2. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales (edad, estado civil, ocupación, nacionalidad).
-3. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal. No omitas el 'total_liquidacion'.
-4. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL y COMPLETA.
+1. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "Los señores esposos", "La sociedad mercantil".
+2. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales.
+3. VALORES MONETARIOS (CRÍTICO): Escanea minuciosamente el documento y las tablas. Extrae con precisión matemática el 'valor_operacion', 'valor_avaluo' y 'valor_catastral' incluyendo sus signos de $. Si encuentras un 'Total', ponlo en 'total_liquidacion'.
+4. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL.
 5. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
-6. CLASIFICACIÓN (IMPORTANTE): 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
+6. CLASIFICACIÓN: 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
 7. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
 8. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
@@ -80,8 +99,12 @@ async def extraer_datos(file: UploadFile = File(...)):
     ruta_temporal = f"temp_{file.filename}"
     with open(ruta_temporal, "wb") as buffer: 
         buffer.write(await file.read())
-    escritura = Document(ruta_temporal)
-    texto_completo = " ".join([p.text for p in escritura.paragraphs])
+        
+    # Usamos el nuevo extractor profundo
+    texto_completo = extraer_texto_documento(ruta_temporal)
+    
+    # Saneamiento rápido para acelerar la IA
+    texto_optimizado = re.sub(r'\s+', ' ', texto_completo).strip()
     os.remove(ruta_temporal)
     
     respuesta = ia_client.chat.completions.create(
@@ -89,7 +112,7 @@ async def extraer_datos(file: UploadFile = File(...)):
         response_format={ "type": "json_object" },
         messages=[
             {"role": "system", "content": PROMPT_SISTEMA},
-            {"role": "user", "content": texto_completo}
+            {"role": "user", "content": texto_optimizado}
         ]
     )
     return json.loads(respuesta.choices[0].message.content)
@@ -147,7 +170,6 @@ async def generar_final(payload: dict):
             supabase.storage.from_("avisos_generados").upload(archivo_data["nombre_unico"], f)
         
         if user_id:
-            # EL CAMBIO CRÍTICO: GUARDAR EL JSON
             supabase.table("historial").insert({
                 "user_id": user_id, 
                 "escritura": str(archivo_data["aviso_data"].get('escritura_numero', 'SN')),
@@ -172,7 +194,6 @@ async def generar_final(payload: dict):
                 with open(arch["ruta_local"], "rb") as f:
                     supabase.storage.from_("avisos_generados").upload(arch["nombre_unico"], f)
                 if user_id:
-                    # GUARDANDO EL JSON TAMBIÉN EN MASIVA
                     supabase.table("historial").insert({
                         "user_id": user_id, 
                         "escritura": str(arch["aviso_data"].get('escritura_numero', 'SN')),
@@ -200,8 +221,10 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
             ruta_temporal = f"temp_{archivo.filename}"
             with open(ruta_temporal, "wb") as buffer: 
                 buffer.write(await archivo.read())
-            escritura = Document(ruta_temporal)
-            texto_completo = " ".join([p.text for p in escritura.paragraphs])
+                
+            # Usamos el nuevo extractor profundo
+            texto_completo = extraer_texto_documento(ruta_temporal)
+            texto_optimizado = re.sub(r'\s+', ' ', texto_completo).strip()
             os.remove(ruta_temporal)
             
             respuesta = ia_client.chat.completions.create(
@@ -209,7 +232,7 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 response_format={ "type": "json_object" },
                 messages=[
                     {"role": "system", "content": PROMPT_SISTEMA},
-                    {"role": "user", "content": texto_completo}
+                    {"role": "user", "content": texto_optimizado}
                 ]
             )
             
