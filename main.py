@@ -86,16 +86,16 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON c
     }
   ]
 }
-REGLAS DE ORO INQUEBRANTABLES:
-1. CERTIFICADO DEL NOTARIO: Busca el párrafo largo de adscripción y nombramiento del notario al inicio. COPIA TEXTUALMENTE.
-2. NOMBRES CON TÍTULOS: Incluye prefijos como "El señor", "La sociedad mercantil".
-3. GENERALES EXACTAS: NO RESUMAS. Copia el párrafo literal.
-4. RFC Y CURP (CRÍTICO): Extrae ÚNICAMENTE el código alfanumérico. OMITE Y ELIMINA el deletreo fonético (ej. ignora "letras O, E, C...").
-5. VALORES MONETARIOS: Extrae el 'valor_operacion', 'avaluo', 'catastral' y el 'impuesto_monto'. El 'total_liquidacion' debe ser IGUAL al 'impuesto_monto'.
-6. ANTECEDENTES Y UBICACIÓN: Copia linderos y antecedentes de forma literal.
-7. CLASIFICACIÓN: DEBE SER UN ARREGLO ["Urbano", "Rústico", "Baldío", "Construido"].
-8. SUBDIVISIONES: Un objeto en 'avisos' POR CADA INMUEBLE.
-9. 'se_anexa': 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
+REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
+1. CERTIFICADO DEL NOTARIO (CRÍTICO): En 'certificado_notario', busca al inicio de la escritura el párrafo largo donde el fedatario declara formalmente su adscripción, nombramiento, acuerdos del ejecutivo, subregiones y fechas de publicación. COPIA ESTE PÁRRAFO COMPLETO DE FORMA ESTRICTAMENTE TEXTUAL E ÍNTEGRA. PROHIBIDO RESUMIR O DEJARLO VACÍO.
+2. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo todos los nombres si son varios, y con sus prefijos como "Los señores", "El señor", "La sociedad mercantil", tal cual vienen en la escritura.
+3. GENERALES EXACTAS (CRÍTICO): En 'generales_vendedor' y 'generales_comprador' NO RESUMAS ABSOLUTAMENTE NADA. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO ORIGINAL donde se mencionan las generales (edad, estado civil, ocupación, nacionalidad). Si son múltiples personas, copia el texto completo de las generales de todas. No inventes edades.
+4. RFC Y CURP (CRÍTICO): Extrae ÚNICAMENTE el código alfanumérico. OMITE Y ELIMINA POR COMPLETO el deletreo fonético (ej. está prohibido incluir frases como "letras O, E, C...", solo pon el código).
+5. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal incluyendo los signos de peso. El 'total_liquidacion' debe ser exactamente IGUAL al 'impuesto_monto'.
+6. ANTECEDENTES Y UBICACIÓN: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL, ÍNTEGRA Y COMPLETA. No omitas líneas. Copia textual la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
+7. CLASIFICACIÓN: 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más opciones: ["Urbano", "Rústico", "Baldío", "Construido"].
+8. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
+9. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...)):
@@ -112,7 +112,7 @@ async def extraer_datos(file: UploadFile = File(...)):
     )
     
     datos_ia = json.loads(respuesta.choices[0].message.content)
-    # Refuerzo por código para sincronizar total e impuesto
+    
     for aviso in datos_ia.get("avisos", []):
         if not aviso.get("total_liquidacion"):
             aviso["total_liquidacion"] = aviso.get("impuesto_monto", "")
@@ -125,7 +125,7 @@ async def generar_final(payload: dict):
     user_id = payload.get("user_id", "")
     
     usos, limite = obtener_uso_y_limite(user_id)
-    if usos >= limite: return {"success": False, "error": f"Límite de tu plan alcanzado ({usos}/{limite} Avisos)."}
+    if usos >= limite: return {"success": False, "error": f"Límite de tu plan alcanzado ({usos}/{limite} Avisos). Dirígete a 'Mi Cuenta' para adquirir un plan superior."}
 
     archivos_generados = []
     timestamp = datetime.now().strftime("%H%M%S")
