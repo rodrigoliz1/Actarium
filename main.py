@@ -66,15 +66,14 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON c
   ]
 }
 REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
-1. CERTIFICADO DEL NOTARIO (CRÍTICO): En 'certificado_notario', busca al inicio de la escritura (en el proemio o primera página) el párrafo largo donde el fedatario declara formalmente su adscripción, nombramiento, acuerdos del poder ejecutivo, subregiones y fechas de publicación en el Periódico Oficial "El Estado de Jalisco" (ej. "Notario Público Titular número... de adscripción al Municipio de... integrado a la región... actuando como asociado..."). COPIA ESTE PÁRRAFO COMPLETO DE FORMA ESTRICTAMENTE TEXTUAL E ÍNTEGRA. PROHIBIDO RESUMIR O DEJARLO VACÍO.
-2. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "Los señores esposos", "La sociedad mercantil", tal cual vienen en la escritura.
-3. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales (edad, estado civil, ocupación, nacionalidad).
-4. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal. No omitas el 'total_liquidacion'.
-5. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL y COMPLETA.
-6. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
-7. CLASIFICACIÓN: 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
-8. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
-9. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
+1. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "Los señores esposos", "La sociedad mercantil", tal cual vienen en la escritura.
+2. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales (edad, estado civil, ocupación, nacionalidad).
+3. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal. No omitas el 'total_liquidacion'.
+4. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL y COMPLETA.
+5. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
+6. CLASIFICACIÓN (IMPORTANTE): 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
+7. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
+8. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...)):
@@ -148,10 +147,15 @@ async def generar_final(payload: dict):
             supabase.storage.from_("avisos_generados").upload(archivo_data["nombre_unico"], f)
         
         if user_id:
+            # EL CAMBIO CRÍTICO: GUARDAR EL JSON
             supabase.table("historial").insert({
-                "user_id": user_id, "escritura": str(archivo_data["aviso_data"].get('escritura_numero', 'SN')),
-                "acto": archivo_data["aviso_data"].get("naturaleza_acto", "-"), "vendedor": archivo_data["aviso_data"].get("nombre_vendedor", "-"),
-                "comprador": archivo_data["aviso_data"].get("nombre_comprador", "-"), "archivo": archivo_data["nombre_unico"]
+                "user_id": user_id, 
+                "escritura": str(archivo_data["aviso_data"].get('escritura_numero', 'SN')),
+                "acto": archivo_data["aviso_data"].get("naturaleza_acto", "-"), 
+                "vendedor": archivo_data["aviso_data"].get("nombre_vendedor", "-"),
+                "comprador": archivo_data["aviso_data"].get("nombre_comprador", "-"), 
+                "archivo": archivo_data["nombre_unico"],
+                "datos_json": json.dumps(archivo_data["aviso_data"])
             }).execute()
             
         os.remove(archivo_data["ruta_local"])
@@ -168,10 +172,15 @@ async def generar_final(payload: dict):
                 with open(arch["ruta_local"], "rb") as f:
                     supabase.storage.from_("avisos_generados").upload(arch["nombre_unico"], f)
                 if user_id:
+                    # GUARDANDO EL JSON TAMBIÉN EN MASIVA
                     supabase.table("historial").insert({
-                        "user_id": user_id, "escritura": str(arch["aviso_data"].get('escritura_numero', 'SN')),
-                        "acto": arch["aviso_data"].get("naturaleza_acto", "-"), "vendedor": arch["aviso_data"].get("nombre_vendedor", "-"),
-                        "comprador": arch["aviso_data"].get("nombre_comprador", "-"), "archivo": arch["nombre_unico"]
+                        "user_id": user_id, 
+                        "escritura": str(arch["aviso_data"].get('escritura_numero', 'SN')),
+                        "acto": arch["aviso_data"].get("naturaleza_acto", "-"), 
+                        "vendedor": arch["aviso_data"].get("nombre_vendedor", "-"),
+                        "comprador": arch["aviso_data"].get("nombre_comprador", "-"), 
+                        "archivo": arch["nombre_unico"],
+                        "datos_json": json.dumps(arch["aviso_data"])
                     }).execute()
                 os.remove(arch["ruta_local"])
         
@@ -258,7 +267,8 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                     supabase.table("historial").insert({
                         "user_id": user_id, "escritura": str(num_escritura),
                         "acto": aviso_ia.get("naturaleza_acto", "-"), "vendedor": aviso_ia.get("nombre_vendedor", "-"),
-                        "comprador": aviso_ia.get("nombre_comprador", "-"), "archivo": nombre_unico_nube
+                        "comprador": aviso_ia.get("nombre_comprador", "-"), "archivo": nombre_unico_nube,
+                        "datos_json": json.dumps(aviso_ia)
                     }).execute()
                     
                 zipf.write(ruta_local, arcname=ruta_en_zip)

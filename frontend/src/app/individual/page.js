@@ -26,6 +26,19 @@ export default function ProduccionIndividual() {
       else setVerificandoAcceso(false);
     };
     revisarLicencia();
+
+    // NUEVO: Verificamos si venimos del botón "Re-editar" del Lobby
+    const avisoGuardado = localStorage.getItem("aviso_editar");
+    if (avisoGuardado) {
+      try {
+        const datosParseados = JSON.parse(avisoGuardado);
+        setAvisos([datosParseados]);
+        setPaso(2); // Brincamos directo a la auditoría
+        localStorage.removeItem("aviso_editar"); // Limpiamos para la próxima vez
+      } catch (e) {
+        console.error("Error al leer datos guardados");
+      }
+    }
   }, [router]);
 
   if (verificandoAcceso) {

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -9,47 +10,73 @@ const supabase = createClient(
 );
 
 export default function Terminal() {
+  const router = useRouter();
   const [session, setSession] = useState(null);
   const [historial, setHistorial] = useState([]);
   const [cargando, setCargando] = useState(true);
-  
-  // Flujo de UI: 'login' | 'opciones-registro' | 'validar-licencia' | 'formulario-registro'
+
+  // Navegación Interna del Dashboard: 'produccion' | 'cuenta'
+  const [pestanaActiva, setPestanaActiva] = useState("produccion");
   const [vista, setVista] = useState("login");
-  
-  // Estados de Formulario
+
+  // Estados de Formulario Auth / Registro
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [nombre, setNombre] = useState("");
   const [licencia, setLicencia] = useState("");
-  
-  // UI Auxiliar
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+
+  // Estados para Cambio de Contraseña
+  const [nuevaContrasena, setNuevaContrasena] = useState("");
+  const [confirmarNuevaContrasena, setConfirmarNuevaContrasena] = useState("");
+  const [pwdMsg, setPwdMsg] = useState({ text: "", type: "" });
+
+  // Estados de Suscripción y Licencia
+  const [licenciaInfo, setLicenciaInfo] = useState(null);
+  const [estadoLicencia, setEstadoLicencia] = useState("idle");
   const [authMsg, setAuthMsg] = useState({ text: "", type: "" });
-  const [estadoLicencia, setEstadoLicencia] = useState("idle"); // idle | checking | valid | invalid | used
-  const [detallesLicencia, setDetallesLicencia] = useState(null);
+
+  // MODO OSCURO GLOBAL
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
+    const savedMode = localStorage.getItem("darkMode");
+    if (savedMode === "true") setIsDarkMode(true);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) cargarHistorial();
+      if (session) {
+        cargarHistorial();
+        cargarDatosSuscripcion(session.user.id);
+      }
       setCargando(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) cargarHistorial();
+      if (session) {
+        cargarHistorial();
+        cargarDatosSuscripcion(session.user.id);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+    localStorage.setItem("darkMode", !isDarkMode);
+  };
 
   const cargarHistorial = async () => {
     const { data } = await supabase.from('historial').select('*').order('created_at', { ascending: false }).limit(50);
     if (data) setHistorial(data);
   };
 
-  // 1. INICIAR SESIÓN
+  const cargarDatosSuscripcion = async (userId) => {
+    const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).single();
+    if (data) setLicenciaInfo(data);
+  };
+
   const hacerLogin = async (e) => {
     e.preventDefault();
     setAuthMsg({ text: "Autenticando...", type: "info" });
@@ -58,14 +85,12 @@ export default function Terminal() {
     else setAuthMsg({ text: "", type: "" });
   };
 
-  // 2. VALIDAR LICENCIA EN BASE DE DATOS
   const validarLicencia = async (e) => {
     e.preventDefault();
     setEstadoLicencia("checking");
-    setAuthMsg({ text: "Verificando licencia en el servidor...", type: "info" });
-
+    setAuthMsg({ text: "Verificando licencia...", type: "info" });
     const { data, error } = await supabase.from('licencias').select('*').eq('codigo', licencia).single();
-    
+
     if (error || !data) {
       setEstadoLicencia("invalid");
       setAuthMsg({ text: "La licencia ingresada es inválida o no existe.", type: "error" });
@@ -76,54 +101,44 @@ export default function Terminal() {
       setAuthMsg({ text: "Esta licencia ya fue registrada por otra notaría.", type: "error" });
       return;
     }
-
-    setDetallesLicencia(data);
     setEstadoLicencia("valid");
-    setAuthMsg({ text: `¡Licencia Válida! Plan corporativo de ${data.duracion_meses} meses.`, type: "success" });
-    
-    // Transición suave al formulario de registro
-    setTimeout(() => {
-      setVista("formulario-registro");
-      setAuthMsg({ text: "", type: "" });
-    }, 2000);
+    setAuthMsg({ text: `¡Licencia Válida! Plan ${data.plan || 'Corporativo'}.`, type: "success" });
+    setTimeout(() => { setVista("formulario-registro"); setAuthMsg({ text: "", type: "" }); }, 2000);
   };
 
-  // 3. REGISTRAR USUARIO
   const registrarCuenta = async (e) => {
     e.preventDefault();
     setAuthMsg({ text: "Creando cuenta en bóveda segura...", type: "info" });
-
-    // Validaciones de Contraseña
-    if (password !== confirmPassword) {
-      return setAuthMsg({ text: "Las contraseñas no coinciden.", type: "error" });
-    }
+    if (password !== confirmPassword) return setAuthMsg({ text: "Las contraseñas no coinciden.", type: "error" });
     const regexPwd = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!regexPwd.test(password)) {
-      return setAuthMsg({ text: "La contraseña debe tener mínimo 8 caracteres, una mayúscula y un número.", type: "error" });
-    }
+    if (!regexPwd.test(password)) return setAuthMsg({ text: "Mínimo 8 caracteres, una mayúscula y un número.", type: "error" });
 
-    // Registrar en Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email, password, options: { data: { nombre_notaria: nombre } }
     });
+    if (authError) return setAuthMsg({ text: authError.message, type: "error" });
 
-    if (authError) {
-      return setAuthMsg({ text: authError.message, type: "error" });
-    }
-
-    // Quemar la licencia (Marcarla como usada)
     if (authData.user) {
-      await supabase.from('licencias').update({ 
-        estado: 'usada', 
-        usada_por: authData.user.id, 
-        fecha_activacion: new Date() 
-      }).eq('codigo', licencia);
+      await supabase.from('licencias').update({ plan: 'Prueba', limite_mensual: 3, estado: 'usada', usada_por: authData.user.id, fecha_activacion: new Date() }).eq('codigo', licencia);
     }
-
-    setAuthMsg({ text: "¡Cuenta creada con éxito! Redirigiendo al Lobby...", type: "success" });
+    setAuthMsg({ text: "¡Cuenta creada con éxito! Redirigiendo...", type: "success" });
   };
 
-  const cerrarSesion = async () => await supabase.auth.signOut();
+  const actualizarContrasena = async (e) => {
+    e.preventDefault();
+    setPwdMsg({ text: "Actualizando contraseña...", type: "info" });
+    if (nuevaContrasena !== confirmarNuevaContrasena) return setPwdMsg({ text: "Las contraseñas no coinciden.", type: "error" });
+
+    const regexPwd = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!regexPwd.test(nuevaContrasena)) return setPwdMsg({ text: "Debe cumplir con: 8+ caracteres, 1 mayúscula y 1 número.", type: "error" });
+
+    const { error } = await supabase.auth.updateUser({ password: nuevaContrasena });
+    if (error) setPwdMsg({ text: error.message, type: "error" });
+    else {
+      setPwdMsg({ text: "¡Contraseña actualizada con éxito!", type: "success" });
+      setNuevaContrasena(""); setConfirmarNuevaContrasena("");
+    }
+  };
 
   const descargarArchivo = async (nombreArchivo) => {
     if (!nombreArchivo) return alert("Sin archivo adjunto.");
@@ -132,225 +147,151 @@ export default function Terminal() {
       const url = window.URL.createObjectURL(data);
       const a = document.createElement("a");
       a.href = url; a.download = nombreArchivo; a.click();
-    } else {
-      alert("Error al descargar archivo.");
-    }
+    } else alert("Error al descargar archivo.");
+  };
+
+  const reEditar = (datosJsonStr) => {
+    if (!datosJsonStr) return alert("No hay datos guardados para este aviso antiguo.");
+    localStorage.setItem("aviso_editar", datosJsonStr);
+    router.push("/individual");
   };
 
   if (cargando) return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>;
 
-  // --- PANTALLA DE SISTEMA DE ACCESO Y LICENCIAS ---
+  // CLASES DINÁMICAS PARA MODO OSCURO
+  const bgPrincipal = isDarkMode ? "bg-[#0A0F1D]" : "bg-[#FAFAFA]";
+  const textPrincipal = isDarkMode ? "text-gray-200" : "text-[#334155]";
+  const textTitulo = isDarkMode ? "text-white" : "text-[#0F172A]";
+  const bgCard = isDarkMode ? "bg-[#121B30] border-gray-800/80 shadow-2xl" : "bg-white border-gray-200 shadow-sm";
+  const bgTableHead = isDarkMode ? "bg-[#090E1A] text-gray-400" : "bg-[#0F172A] text-white";
+  const tableRowHover = isDarkMode ? "hover:bg-[#18233C]" : "hover:bg-gray-50";
+  const borderBline = isDarkMode ? "border-gray-800" : "border-gray-100";
+  const inputClass = isDarkMode ? "bg-[#18243E] border-gray-700 text-white focus:border-[#D4AF37]" : "bg-gray-50 border-gray-200 text-[#334155] focus:border-[#D4AF37]";
+
   if (!session) {
     return (
       <div className="min-h-screen bg-[#0F172A] flex flex-col justify-center items-center font-sans relative overflow-hidden px-4">
-        <div className="absolute top-[-15%] left-[-10%] w-[60%] h-[60%] bg-[#D4AF37] opacity-10 rounded-full blur-[120px] pointer-events-none animate-pulse duration-10000"></div>
-        <div className="absolute bottom-[-15%] right-[-10%] w-[60%] h-[60%] bg-blue-600 opacity-10 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute top-[-15%] left-[-10%] w-[60%] h-[60%] bg-[#D4AF37] opacity-10 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="z-10 w-full max-w-md bg-white/95 p-10 rounded-[2rem] shadow-2xl border border-white/20 text-[#334155]">
+          <div className="flex justify-center mb-6"><img src="/logo.png" alt="Logo" className="w-20 h-20 object-contain" /></div>
 
-        <div className="z-10 w-full max-w-md bg-white/95 backdrop-blur-md p-10 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/20 transition-all duration-500 overflow-hidden">
-          
-          <div className="flex justify-center mb-6"><img src="/logo.png" alt="Logo" className="w-20 h-20 object-contain drop-shadow-xl" /></div>
-          
-          {/* VISTA 1: LOGIN */}
           {vista === "login" && (
-            <div className="animate-in slide-in-from-bottom-4 fade-in duration-500 text-center">
+            <div className="text-center">
               <h1 className="text-3xl font-serif tracking-widest text-[#0F172A] mb-1">ACTARIUM</h1>
               <p className="text-gray-400 text-[10px] font-bold tracking-[0.2em] mb-8 uppercase">Acceso Corporativo</p>
               <form onSubmit={hacerLogin} className="space-y-4 text-left">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 block ml-1">Correo Institucional</label>
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white transition-colors" placeholder="notaria@ejemplo.com"/>
-                </div>
-                <div className="relative">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 block ml-1">Contraseña</label>
-                  <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white transition-colors pr-12" placeholder="••••••••"/>
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-[38px] text-gray-400 hover:text-[#D4AF37] focus:outline-none">
-                    {showPassword ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.188-1.556c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0l-3.29-3.29"></path></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>}
-                  </button>
-                </div>
-                {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-[#D4AF37]'}`}>{authMsg.text}</p>}
-                <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all shadow-lg mt-2">INGRESAR</button>
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white text-sm" placeholder="Correo institucional" />
+                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white text-sm" placeholder="Contraseña" />
+                {authMsg.text && <p className="text-xs text-center text-red-500 font-medium">{authMsg.text}</p>}
+                <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all mt-2">INGRESAR</button>
               </form>
-              
-              <div className="mt-8 flex flex-col items-center gap-4">
-                <button onClick={() => {setVista("opciones-registro"); setAuthMsg({text:"", type:""});}} className="text-xs text-gray-400 hover:text-[#D4AF37] transition-colors border-b border-transparent hover:border-[#D4AF37] pb-1">
-                  ¿No tienes cuenta? Crear una Notaría
-                </button>
-                <Link href="/" className="text-xs text-gray-500 hover:text-[#0F172A] transition-colors font-medium">
-                  ← Volver a la página principal
-                </Link>
-              </div>
+              <button onClick={() => setVista("validar-licencia")} className="mt-6 text-xs text-gray-400 hover:text-[#D4AF37]">¿No tienes cuenta? Registrar Licencia</button>
             </div>
           )}
 
-          {/* VISTA 2: OPCIONES DE REGISTRO */}
-          {vista === "opciones-registro" && (
-            <div className="animate-in slide-in-from-right fade-in duration-300 text-center">
-              <h2 className="text-2xl font-serif text-[#0F172A] mb-2">Crear Cuenta</h2>
-              <p className="text-gray-500 text-sm mb-8">El acceso a Actarium requiere una licencia corporativa válida.</p>
-              
-              <div className="space-y-4">
-                <button onClick={() => setVista("validar-licencia")} className="w-full flex items-center justify-between p-5 border-2 border-gray-100 rounded-2xl hover:border-[#D4AF37] hover:bg-[#FEFCE8] transition-all group">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-white text-xl">🔑</div>
-                    <div className="text-left"><p className="font-bold text-[#0F172A]">Registrar Licencia</p><p className="text-[10px] text-gray-400 uppercase tracking-widest">Ya tengo un código</p></div>
-                  </div>
-                  <span className="text-gray-300 group-hover:text-[#D4AF37]">→</span>
-                </button>
-
-                <Link href="/pricing" className="w-full flex items-center justify-between p-5 border-2 border-gray-100 rounded-2xl hover:border-[#D4AF37] hover:bg-[#FEFCE8] transition-all group cursor-pointer block">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-white text-xl">💳</div>
-                    <div className="text-left"><p className="font-bold text-[#0F172A]">Comprar Licencia</p><p className="text-[10px] text-gray-400 uppercase tracking-widest">Ver planes de precios</p></div>
-                  </div>
-                  <span className="text-gray-300 group-hover:text-[#D4AF37]">→</span>
-                </Link>
-              </div>
-              <button onClick={() => setVista("login")} className="mt-8 text-xs text-gray-400 hover:text-[#0F172A]">← Volver al login</button>
-            </div>
-          )}
-
-          {/* VISTA 3: VALIDAR LICENCIA */}
           {vista === "validar-licencia" && (
-            <div className="animate-in slide-in-from-right fade-in duration-300 text-center">
+            <div className="text-center">
               <h2 className="text-2xl font-serif text-[#0F172A] mb-2">Activación</h2>
-              <p className="text-gray-500 text-sm mb-6">Ingrese su código de licencia oficial (Ej. ACT-XXXXX).</p>
-              
-              <form onSubmit={validarLicencia} className="text-left space-y-4">
-                <div>
-                  <input type="text" required value={licencia} onChange={(e) => setLicencia(e.target.value.toUpperCase())} className={`w-full p-4 border-2 rounded-xl outline-none text-center font-mono text-lg tracking-widest transition-colors uppercase ${estadoLicencia === 'invalid' || estadoLicencia === 'used' ? 'border-red-400 bg-red-50 text-red-700' : estadoLicencia === 'valid' ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-200 focus:border-[#D4AF37]'}`} placeholder="ACT-XXXX-XXXX"/>
-                </div>
-                {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : authMsg.type === 'success' ? 'text-green-600' : 'text-[#D4AF37]'}`}>{authMsg.text}</p>}
-                
-                <button type="submit" disabled={estadoLicencia === 'checking'} className="w-full bg-[#0F172A] text-white py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all disabled:opacity-70 disabled:cursor-not-allowed">
-                  {estadoLicencia === 'checking' ? "VERIFICANDO..." : "VALIDAR CÓDIGO"}
-                </button>
+              <p className="text-gray-500 text-sm mb-6">Ingrese su código de licencia de suscripción.</p>
+              <form onSubmit={validarLicencia} className="space-y-4">
+                <input type="text" required value={licencia} onChange={(e) => setLicencia(e.target.value.toUpperCase())} className="w-full p-4 border-2 border-gray-200 rounded-xl text-center font-mono text-lg tracking-widest outline-none focus:border-[#D4AF37]" placeholder="ACT-XXXX-XXXX" />
+                {authMsg.text && <p className="text-xs text-center text-[#D4AF37] font-medium">{authMsg.text}</p>}
+                <button type="submit" className="w-full bg-[#0F172A] text-white py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37]">VALIDAR CÓDIGO</button>
               </form>
-              <button onClick={() => {setVista("opciones-registro"); setAuthMsg({text:"", type:""}); setEstadoLicencia("idle");}} className="mt-8 text-xs text-gray-400 hover:text-[#0F172A]">← Volver atrás</button>
+              <button onClick={() => setVista("login")} className="mt-6 text-xs text-gray-400 hover:text-[#0F172A]">← Volver al login</button>
             </div>
           )}
 
-          {/* VISTA 4: FORMULARIO DE REGISTRO (Solo se muestra tras validar licencia) */}
           {vista === "formulario-registro" && (
-            <div className="animate-in slide-in-from-right fade-in duration-500 text-center">
-              <div className="bg-green-50 text-green-700 p-2 rounded-lg text-xs font-bold uppercase tracking-widest mb-6 border border-green-200">
-                ✓ Licencia {licencia} Activa
-              </div>
-              <h2 className="text-2xl font-serif text-[#0F172A] mb-6">Datos de la Notaría</h2>
-              
-              <form onSubmit={registrarCuenta} className="text-left space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block ml-1">Titular o Notaría</label>
-                  <input type="text" required value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm" placeholder="Ej. Notaría Pública No. 1"/>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block ml-1">Correo Administrador</label>
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm" placeholder="contacto@notaria.com"/>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="relative">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block ml-1">Contraseña</label>
-                    <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm pr-10"/>
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-[28px] text-gray-400 hover:text-[#D4AF37]">
-                      {showPassword ? <span className="text-[10px] uppercase font-bold">Ocultar</span> : <span className="text-[10px] uppercase font-bold">Ver</span>}
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block ml-1">Confirmar</label>
-                    <input type={showConfirm ? "text" : "password"} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm pr-10"/>
-                    <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-[28px] text-gray-400 hover:text-[#D4AF37]">
-                       {showConfirm ? <span className="text-[10px] uppercase font-bold">Ocultar</span> : <span className="text-[10px] uppercase font-bold">Ver</span>}
-                    </button>
-                  </div>
-                </div>
-
-                <p className="text-[9px] text-gray-400 px-1">* Mínimo 8 caracteres. Debe incluir al menos una letra mayúscula y un número.</p>
-
-                {authMsg.text && <p className={`text-xs text-center font-medium p-2 rounded ${authMsg.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-[#FEFCE8] text-[#A16207]'}`}>{authMsg.text}</p>}
-                
-                <button type="submit" className="w-full bg-[#D4AF37] text-[#0F172A] py-4 rounded-xl font-bold tracking-widest hover:bg-[#0F172A] hover:text-[#D4AF37] transition-all shadow-lg mt-2">
-                  FINALIZAR REGISTRO
-                </button>
-              </form>
-            </div>
+            <form onSubmit={registrarCuenta} className="space-y-4 text-left">
+              <h2 className="text-2xl font-serif text-[#0F172A] text-center mb-4">Datos de la Notaría</h2>
+              <input type="text" required value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm" placeholder="Nombre de la Notaría (Ej. Notaría No. 1)" />
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm" placeholder="Correo Administrador" />
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm" placeholder="Contraseña" />
+              <input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm" placeholder="Confirmar Contraseña" />
+              {authMsg.text && <p className="text-xs text-center text-red-500 font-medium">{authMsg.text}</p>}
+              <button type="submit" className="w-full bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold tracking-widest">FINALIZAR REGISTRO</button>
+            </form>
           )}
-
         </div>
       </div>
     );
   }
 
-  // --- PANTALLA DEL LOBBY DE LA NOTARÍA (Una vez que inician sesión) ---
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-[#334155] font-sans pb-20 animate-in fade-in duration-700">
-      <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-xl border-b border-[#D4AF37]/20">
+    <div className={`min-h-screen ${bgPrincipal} ${textPrincipal} font-sans pb-20 transition-colors duration-500`}>
+      {/* NAVBAR INTELIGENTE */}
+      <nav className="bg-[#0F172A] text-white py-4 px-6 md:px-10 flex justify-between items-center shadow-xl border-b border-[#D4AF37]/20">
         <div className="flex items-center gap-4">
-          <img src="/logo.png" alt="Logo Actarium" className="w-10 h-10 object-contain drop-shadow-md" />
-          <h1 className="text-xl font-serif tracking-widest text-[#D4AF37] mt-1">ACTARIUM</h1>
-        </div>
-        <div className="flex items-center gap-6">
-          {/* Mostramos el nombre de la notaría que guardamos al registrar */}
-          <p className="text-sm tracking-wide font-light hidden md:block text-[#D4AF37] font-bold">
-            {session.user.user_metadata?.nombre_notaria || session.user.email}
-          </p>
-          <div className="w-10 h-10 bg-[#334155] rounded-full flex items-center justify-center border border-[#D4AF37] shadow-inner">
-            <span className="text-sm font-bold text-[#D4AF37]">{session.user.email.charAt(0).toUpperCase()}</span>
+          <img src="/logo.png" alt="Logo Actarium" className="w-10 h-10 object-contain" />
+          <div>
+            <h1 className="text-lg md:text-xl font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
+            <p className="text-[9px] uppercase tracking-wider text-gray-400 font-bold hidden sm:block">Notary Management Ecosystem</p>
           </div>
-          <button onClick={cerrarSesion} className="text-xs uppercase tracking-widest text-gray-400 hover:text-white transition-colors border-l border-gray-600 pl-6 h-6">Cerrar Sesión</button>
+        </div>
+
+        <div className="flex items-center gap-6">
+          {/* MENU INTERNO DE PESTAÑAS */}
+          <div className="flex bg-[#1E293B] p-1 rounded-xl border border-gray-700">
+            <button onClick={() => setPestanaActiva("produccion")} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pestanaActiva === 'produccion' ? 'bg-[#D4AF37] text-[#0F172A] shadow-md' : 'text-gray-400 hover:text-white'}`}>Producción</button>
+            <button onClick={() => setPestanaActiva("cuenta")} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pestanaActiva === 'cuenta' ? 'bg-[#D4AF37] text-[#0F172A] shadow-md' : 'text-gray-400 hover:text-white'}`}>Mi Cuenta</button>
+          </div>
+
+          <button onClick={toggleDarkMode} className="text-xl hover:scale-110 transition-transform hidden sm:block">{isDarkMode ? "☀️" : "🌙"}</button>
+          <button onClick={async () => await supabase.auth.signOut()} className="text-xs uppercase tracking-widest text-gray-400 hover:text-white border-l border-gray-700 pl-4">Salir</button>
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto mt-16 px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-serif text-[#0F172A] mb-4">Lobby de Producción</h2>
-          <p className="text-lg text-gray-500 max-w-2xl mx-auto">Conectado a Bóveda Criptográfica y Motor Cognitivo OpenAI.</p>
-        </div>
+      {/* RENDERIZADO DE PESTAÑA: PRODUCCIÓN */}
+      {pestanaActiva === "produccion" && (
+        <main className="max-w-6xl mx-auto mt-12 px-6 animate-in fade-in duration-300">
+          <div className="text-center mb-12">
+            <h2 className={`text-4xl font-serif ${textTitulo} mb-2`}>Consola Notarial</h2>
+            <p className="text-sm text-gray-400 font-light">Conectado a la Bóveda de {session.user.user_metadata?.nombre_notaria || session.user.email}</p>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-20">
-          <Link href="/individual">
-            <div className="bg-white h-full p-10 rounded-2xl shadow-sm border border-gray-200 hover:shadow-2xl hover:border-[#D4AF37] transition-all duration-500 cursor-pointer flex flex-col items-center text-center group transform hover:-translate-y-1">
-              <div className="w-24 h-24 bg-[#0F172A] rounded-full flex items-center justify-center mb-8 group-hover:bg-[#D4AF37] transition-colors duration-500 shadow-lg"><span className="text-3xl">📄</span></div>
-              <h3 className="text-2xl font-serif text-[#0F172A] mb-3">Producción Individual</h3>
-              <p className="text-sm text-gray-500">Auditoría minuciosa de los datos extraídos por IA antes de generar el aviso.</p>
-            </div>
-          </Link>
-          <Link href="/masiva">
-            <div className="bg-white h-full p-10 rounded-2xl shadow-sm border border-gray-200 hover:shadow-2xl hover:border-[#D4AF37] transition-all duration-500 cursor-pointer flex flex-col items-center text-center group transform hover:-translate-y-1">
-              <div className="w-24 h-24 bg-[#0F172A] rounded-full flex items-center justify-center mb-8 group-hover:bg-[#D4AF37] transition-colors duration-500 shadow-lg"><span className="text-3xl">📂</span></div>
-              <h3 className="text-2xl font-serif text-[#0F172A] mb-3">Producción Masiva</h3>
-              <p className="text-sm text-gray-500">Subir múltiples documentos y empaquetar los avisos en ZIP.</p>
-            </div>
-          </Link>
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+            <Link href="/individual">
+              <div className={`${bgCard} p-8 rounded-2xl border hover:border-[#D4AF37] transition-all duration-300 cursor-pointer flex flex-col items-center text-center group`}>
+                <div className="w-16 h-16 bg-[#0F172A] rounded-full flex items-center justify-center mb-4 text-2xl group-hover:bg-[#D4AF37] text-[#D4AF37] group-hover:text-[#0F172A] transition-all">📄</div>
+                <h3 className={`text-xl font-serif ${textTitulo} mb-2`}>Producción Individual</h3>
+                <p className="text-xs text-gray-400 font-light">Auditoría minuciosa y ruteo automatizado por municipio.</p>
+              </div>
+            </Link>
+            <Link href="/masiva">
+              <div className={`${bgCard} p-8 rounded-2xl border hover:border-[#D4AF37] transition-all duration-300 cursor-pointer flex flex-col items-center text-center group`}>
+                <div className="w-16 h-16 bg-[#0F172A] rounded-full flex items-center justify-center mb-4 text-2xl group-hover:bg-[#D4AF37] text-[#D4AF37] group-hover:text-[#0F172A] transition-all">📂</div>
+                <h3 className={`text-xl font-serif ${textTitulo} mb-2`}>Producción Masiva</h3>
+                <p className="text-xs text-gray-400 font-light">Procesamiento por lote de alta velocidad estructurado en carpetas ZIP.</p>
+              </div>
+            </Link>
+          </div>
 
-        <div>
-          <h3 className="text-2xl font-serif text-[#0F172A] mb-6 flex items-center gap-3">
-            <span className="text-[#D4AF37] text-2xl">🗄️</span> Archivo Maestro (Bóveda de la Notaría)
-          </h3>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          {/* HISTORIAL / BÓVEDA MAESTRA */}
+          <h3 className={`text-xl font-serif ${textTitulo} mb-4 flex items-center gap-2`}><span>🗄️</span> Bóveda Inmortal de Avisos</h3>
+          <div className={`${bgCard} rounded-2xl border overflow-hidden`}>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-[#0F172A] text-white">
+                <thead className={bgTableHead}>
                   <tr>
-                    <th className="p-5 font-medium tracking-wider text-xs uppercase">Fecha</th>
-                    <th className="p-5 font-medium tracking-wider text-xs uppercase">Escritura</th>
-                    <th className="p-5 font-medium tracking-wider text-xs uppercase">Vendedor</th>
-                    <th className="p-5 font-medium tracking-wider text-xs uppercase text-center">Bóveda</th>
+                    <th className="p-4 font-bold text-xs uppercase">Fecha</th>
+                    <th className="p-4 font-bold text-xs uppercase">Escritura</th>
+                    <th className="p-4 font-bold text-xs uppercase">Vendedor</th>
+                    <th className="p-4 font-bold text-xs uppercase text-center">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-200/10">
                   {historial.length === 0 ? (
-                    <tr><td colSpan="4" className="p-10 text-center text-gray-400 italic">No hay operaciones registradas en su cuenta.</td></tr>
+                    <tr><td colSpan="4" className="p-10 text-center text-gray-400 italic">No hay registros guardados en esta cuenta.</td></tr>
                   ) : (
                     historial.map((fila) => (
-                      <tr key={fila.id} className="hover:bg-gray-50">
-                        <td className="p-5 text-gray-500">{new Date(fila.created_at).toLocaleDateString()}</td>
-                        <td className="p-5 font-bold text-[#0F172A]">{fila.escritura}</td>
-                        <td className="p-5 truncate max-w-[200px]" title={fila.vendedor}>{fila.vendedor}</td>
-                        <td className="p-5 text-center">
-                          <button onClick={() => descargarArchivo(fila.archivo)} className="bg-[#FEFCE8] text-[#A16207] border border-[#FEF08A] hover:bg-[#D4AF37] hover:text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm">
-                            DESCARGAR
-                          </button>
+                      <tr key={fila.id} className={`${tableRowHover} transition-colors border-b ${borderBline}`}>
+                        <td className="p-4 text-gray-400">{new Date(fila.created_at).toLocaleDateString()}</td>
+                        <td className={`p-4 font-bold ${textTitulo}`}>{fila.escritura}</td>
+                        <td className="p-4 truncate max-w-[200px]" title={fila.vendedor}>{fila.vendedor}</td>
+                        <td className="p-4 flex items-center justify-center gap-2">
+                          <button onClick={() => reEditar(fila.datos_json)} className="bg-gray-50 border border-gray-300 text-gray-700 hover:bg-gray-800 hover:text-white px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-all">✏️ Re-editar</button>
+                          <button onClick={() => descargarArchivo(fila.archivo)} className="bg-[#FEFCE8] text-[#A16207] border border-[#FEF08A] hover:bg-[#D4AF37] hover:text-[#0F172A] px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-all">📥 Descargar</button>
                         </td>
                       </tr>
                     ))
@@ -359,8 +300,91 @@ export default function Terminal() {
               </table>
             </div>
           </div>
-        </div>
-      </main>
+        </main>
+      )}
+
+      {/* RENDERIZADO DE PESTAÑA: CONFIGURACIÓN / CUENTA */}
+      {pestanaActiva === "cuenta" && (
+        <main className="max-w-5xl mx-auto mt-12 px-6 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+            {/* COMPONENTE: DETALLES DE SUSCRIPCIÓN */}
+            <div className="md:col-span-1 space-y-6">
+              <div className={`${bgCard} p-6 rounded-2xl border text-center relative overflow-hidden`}>
+                <div className="absolute top-0 right-0 bg-[#D4AF37] text-[#0F172A] font-black uppercase tracking-widest text-[9px] px-4 py-1 rounded-bl-xl shadow">
+                  {licenciaInfo?.plan || "Prueba"}
+                </div>
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-6">Estado de Cuenta</h3>
+
+                <div className="my-4">
+                  <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Avisos Consumidos este mes</p>
+                  <p className={`text-5xl font-serif font-black my-2 ${isDarkMode ? 'text-white' : 'text-[#0F172A]'}`}>
+                    {licenciaInfo?.usos_mes || 0} <span className="text-xl font-sans font-light text-gray-400">/ {licenciaInfo?.limite_mensual || 3}</span>
+                  </p>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-gray-200/10 text-left text-xs space-y-2">
+                  <div className="flex justify-between"><span className="text-gray-400">Código de Licencia:</span><span className="font-mono font-bold text-[#D4AF37]">{licenciaInfo?.codigo || "ACT-DEMO"}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-400">Vence / Renueva:</span><span className="font-medium">{licenciaInfo?.fecha_renovacion ? new Date(licenciaInfo.fecha_renovacion).toLocaleDateString() : "No especificado"}</span></div>
+                </div>
+              </div>
+
+              {/* TARJETA INFORMATIVA PLANES */}
+              <div className="p-6 bg-gradient-to-br from-[#0F172A] to-[#1E293B] border border-[#D4AF37]/30 rounded-2xl text-white shadow-xl">
+                <h4 className="font-serif text-lg text-[#D4AF37] mb-2">¿Necesitas más poder?</h4>
+                <p className="text-xs text-gray-400 leading-relaxed font-light mb-4">Sube de categoría al instante para ampliar tu límite mensual de procesamiento cognitivo de escrituras.</p>
+                <div className="text-[11px] font-bold uppercase tracking-widest space-y-1 text-gray-300">
+                  <p>• Oro: 10 avisos/mes</p><p>• Platino: 20 avisos/mes</p><p>• Black: 50 avisos/mes</p>
+                </div>
+              </div>
+            </div>
+
+            {/* COMPONENTE: CAMBIO DE CONTRASEÑA Y SEGURIDAD */}
+            <div className="md:col-span-2 space-y-6">
+              <div className={`${bgCard} p-8 rounded-2xl border`}>
+                <h3 className={`text-xl font-serif ${textTitulo} mb-1`}>Seguridad de la Cuenta</h3>
+                <p className="text-xs text-gray-400 mb-6">Actualice las credenciales de acceso institucional a su bóveda.</p>
+
+                <form onSubmit={actualizarContrasena} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Nueva Contraseña</label>
+                      <input type="password" required value={nuevaContrasena} onChange={e => setNuevaContrasena(e.target.value)} className={`w-full p-3 rounded-lg border outline-none text-sm transition-colors ${inputClass}`} placeholder="••••••••" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Confirmar Nueva Contraseña</label>
+                      <input type="password" required value={confirmarNuevaContrasena} onChange={e => setConfirmarNuevaContrasena(e.target.value)} className={`w-full p-3 rounded-lg border outline-none text-sm transition-colors ${inputClass}`} placeholder="••••••••" />
+                    </div>
+                  </div>
+
+                  {pwdMsg.text && (
+                    <p className={`text-xs p-2.5 rounded font-medium text-center ${pwdMsg.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                      {pwdMsg.text}
+                    </p>
+                  )}
+
+                  <div className="flex justify-end pt-2">
+                    <button type="submit" className="bg-[#0F172A] text-[#D4AF37] px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-colors border border-[#D4AF37]/20 shadow-md">
+                      Guardar Cambios
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* DETALLES DE LA NOTARÍA TITULAR */}
+              <div className={`${bgCard} p-8 rounded-2xl border`}>
+                <h3 className={`text-xl font-serif ${textTitulo} mb-1`}>Datos de Facturación y Registro</h3>
+                <p className="text-xs text-gray-400 mb-6">Información corporativa dada de alta en el servidor maestro.</p>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Nombre Comercial:</p><p className="font-medium text-sm">{session.user.user_metadata?.nombre_notaria || "No especificado"}</p></div>
+                  <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-1">Correo Administrador:</p><p className="font-medium text-sm">{session.user.email}</p></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </main>
+      )}
     </div>
   );
 }
