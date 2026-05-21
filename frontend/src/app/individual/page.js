@@ -41,7 +41,14 @@ export default function ProduccionIndividual() {
     try {
       const res = await fetch("https://actarium-yqof.onrender.com/extraer-datos", { method: "POST", body: formData });
       const data = await res.json();
-      setAvisos(data.avisos || []);
+
+      // Sanitizamos clasificación para asegurar que sea array
+      const avisosSanitizados = (data.avisos || []).map(aviso => ({
+        ...aviso,
+        clasificacion_inmueble: Array.isArray(aviso.clasificacion_inmueble) ? aviso.clasificacion_inmueble : []
+      }));
+
+      setAvisos(avisosSanitizados);
       setPaso(2);
     } catch (err) {
       console.error(err);
@@ -53,6 +60,18 @@ export default function ProduccionIndividual() {
   const handleChange = (index, campo, valor) => {
     const nuevosAvisos = [...avisos];
     nuevosAvisos[index][campo] = valor;
+    setAvisos(nuevosAvisos);
+  };
+
+  const handleCheckboxClasif = (index, opcion, isChecked) => {
+    const nuevosAvisos = [...avisos];
+    const actuales = nuevosAvisos[index].clasificacion_inmueble || [];
+
+    if (isChecked) {
+      nuevosAvisos[index].clasificacion_inmueble = [...actuales, opcion];
+    } else {
+      nuevosAvisos[index].clasificacion_inmueble = actuales.filter(i => i !== opcion);
+    }
     setAvisos(nuevosAvisos);
   };
 
@@ -221,7 +240,7 @@ export default function ProduccionIndividual() {
                       <div className="space-y-3">
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre(s) Completo(s)</label><textarea rows="2" value={aviso.nombre_vendedor || ""} onChange={e => handleChange(index, "nombre_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Lugar y Fecha de Nac.</label><input type="text" value={aviso.nacimiento_vendedor || ""} onChange={e => handleChange(index, "nacimiento_vendedor", e.target.value)} className="w-full p-2 border-b outline-none bg-gray-50 text-xs" /></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Estado civil, ocupación)</label><textarea rows="3" value={aviso.generales_vendedor || ""} onChange={e => handleChange(index, "generales_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-xs leading-relaxed"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Párrafo literal)</label><textarea rows="4" value={aviso.generales_vendedor || ""} onChange={e => handleChange(index, "generales_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-[11px] leading-relaxed"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Domicilio</label><textarea rows="2" value={aviso.domicilio_vendedor || ""} onChange={e => handleChange(index, "domicilio_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">RFC / CURP</label><textarea rows="1" value={aviso.curp_vendedor || ""} onChange={e => handleChange(index, "curp_vendedor", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 font-mono"></textarea></div>
                       </div>
@@ -232,7 +251,7 @@ export default function ProduccionIndividual() {
                       <div className="space-y-3">
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Nombre(s) Completo(s)</label><textarea rows="2" value={aviso.nombre_comprador || ""} onChange={e => handleChange(index, "nombre_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Lugar y Fecha de Nac.</label><input type="text" value={aviso.nacimiento_comprador || ""} onChange={e => handleChange(index, "nacimiento_comprador", e.target.value)} className="w-full p-2 border-b outline-none bg-gray-50 text-xs" /></div>
-                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Estado civil, ocupación)</label><textarea rows="3" value={aviso.generales_comprador || ""} onChange={e => handleChange(index, "generales_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-xs leading-relaxed"></textarea></div>
+                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Generales (Párrafo literal)</label><textarea rows="4" value={aviso.generales_comprador || ""} onChange={e => handleChange(index, "generales_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 text-[11px] leading-relaxed"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">Domicilio</label><textarea rows="2" value={aviso.domicilio_comprador || ""} onChange={e => handleChange(index, "domicilio_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50"></textarea></div>
                         <div><label className="text-[10px] uppercase font-bold text-gray-400">RFC / CURP</label><textarea rows="1" value={aviso.curp_comprador || ""} onChange={e => handleChange(index, "curp_comprador", e.target.value)} className="w-full p-2 border-b outline-none resize-none bg-gray-50 font-mono"></textarea></div>
                       </div>
@@ -243,15 +262,24 @@ export default function ProduccionIndividual() {
                     <section className="bg-[#FEFCE8]/50 p-6 rounded-xl shadow-sm border border-[#D4AF37]/30 h-full">
                       <h3 className="text-[#0F172A] text-xs font-bold uppercase tracking-widest mb-4">III. El Inmueble y Antecedentes</h3>
                       <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3 mb-2 p-3 bg-white rounded border border-gray-200">
-                          <div>
-                            <label className="text-[10px] uppercase font-bold text-[#0F172A]">Clasificación</label>
-                            <select value={aviso.clasificacion_inmueble || ""} onChange={e => handleChange(index, "clasificacion_inmueble", e.target.value)} className="w-full mt-1 p-2 bg-gray-50 border border-gray-100 rounded outline-none focus:border-[#D4AF37] text-xs">
-                              <option value="">Seleccione...</option><option value="Urbano">Urbano</option><option value="Rústico">Rústico</option><option value="Baldío">Baldío</option><option value="Construido">Construido</option>
-                            </select>
+                        <div className="mb-2 p-3 bg-white rounded border border-gray-200">
+                          <label className="text-[10px] uppercase font-bold text-[#0F172A] mb-2 block">Clasificación (Puedes seleccionar varias)</label>
+                          <div className="flex flex-wrap gap-2">
+                            {['Urbano', 'Rústico', 'Baldío', 'Construido'].map(opcion => (
+                              <label key={opcion} className={`flex items-center gap-1 text-xs border px-2 py-1 rounded cursor-pointer transition-colors ${(aviso.clasificacion_inmueble || []).includes(opcion) ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#A16207]' : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-[#D4AF37]'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={(aviso.clasificacion_inmueble || []).includes(opcion)}
+                                  onChange={(e) => handleCheckboxClasif(index, opcion, e.target.checked)}
+                                  className="hidden"
+                                />
+                                {opcion}
+                              </label>
+                            ))}
                           </div>
-                          <div>
-                            <label className="text-[10px] uppercase font-bold text-[#0F172A]">Lo transmitido es</label>
+
+                          <div className="mt-4 border-t border-gray-100 pt-3">
+                            <label className="text-[10px] uppercase font-bold text-[#0F172A] block">Lo transmitido es</label>
                             <select value={aviso.lo_transmitido || ""} onChange={e => handleChange(index, "lo_transmitido", e.target.value)} className="w-full mt-1 p-2 bg-gray-50 border border-gray-100 rounded outline-none focus:border-[#D4AF37] text-xs">
                               <option value="">Seleccione...</option><option value="Fracción">Fracción</option><option value="Resto">Resto</option><option value="Totalidad">Totalidad</option>
                             </select>

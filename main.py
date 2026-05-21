@@ -49,7 +49,7 @@ def obtener_plantilla_y_municipio(municipio_extraido: str):
     elif "TONAL" in mun: return "Plantilla_Tonala.docx", "TONALA"
     else: return "Plantilla_Generica.docx", mun if mun and mun != "GENERICO" else "GENERICO"
 
-PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. PROHIBIDO RESUMIR Y NO TE LIMITES EN NADA DE EXTENSIÓN EN CONTENIDO, HAZLO LO MÁS PROFESIONAL POSIBLE. Extrae los datos en JSON con la siguiente estructura estricta:
+PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON con la siguiente estructura estricta:
 {
   "avisos": [
     {
@@ -61,17 +61,17 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. PROHIBIDO RESUMIR Y NO TE 
       "valor_operacion": "", "valor_avaluo": "", "valor_catastral": "",
       "impuesto_monto": "", "total_liquidacion": "", 
       "nombre_notario": "", "notaria_numero": "", "correo_notario": "", "certificado_notario": "", 
-      "clasificacion_inmueble": "", "lo_transmitido": "", "municipio_inmueble": "", "se_anexa": ""
+      "clasificacion_inmueble": [], "lo_transmitido": "", "municipio_inmueble": "", "se_anexa": ""
     }
   ]
 }
-REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR Y NO TE LIMITES EN NADA DE EXTENSIÓN EN CONTENIDO, HAZLO LO MÁS PROFESIONAL POSIBLE):
-1. MÚLTIPLES PERSONAS: Si hay 2 o más transmitentes/adquirentes, EXTRAE TODOS SUS NOMBRES, RFC, DOMICILIOS y GENERALES unidos por comas.
-2. CERO INVENTOS: En 'generales' NO alucines edades ni datos. Si no menciona la edad, no la pongas.
-3. NACIMIENTOS: Busca explícitamente el "lugar y fecha de nacimiento" de ambas partes.
-4. VALORES: Busca y extrae por separado el Valor de Operación, Valor de Avalúo y Valor Catastral. Si dice 'Total', ponlo en 'total_liquidacion'.
-5. ANTECEDENTES Y RESOLUCIONES: Copia el antecedente de propiedad LITERAL. Extrae la 'fecha_resolucion' solo si es una adjudicación o se menciona.
-6. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble' (ej. Casa Habitación, Industrial).
+REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
+1. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "Los señores esposos", "La sociedad mercantil", tal cual vienen en la escritura.
+2. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales (edad, estado civil, ocupación, nacionalidad).
+3. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal. No omitas el 'total_liquidacion'.
+4. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL y COMPLETA.
+5. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
+6. CLASIFICACIÓN (IMPORTANTE): 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
 7. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
 8. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
@@ -103,15 +103,19 @@ async def generar_final(payload: dict):
     timestamp = datetime.now().strftime("%H%M%S")
     
     for idx, aviso in enumerate(avisos):
-        clasif = aviso.get("clasificacion_inmueble", "")
+        clasif = aviso.get("clasificacion_inmueble", [])
+        if isinstance(clasif, str): clasif = [clasif] # Por si la IA manda string en vez de array
+        
         trans = aviso.get("lo_transmitido", "")
         municipio_extraido = aviso.get("municipio_inmueble", "")
         anexo = aviso.get("se_anexa", "Avalúo Bancario")
         
-        aviso["x_urbano"] = "X" if clasif == "Urbano" else " "
-        aviso["x_rustico"] = "X" if clasif == "Rústico" else " "
-        aviso["x_baldio"] = "X" if clasif == "Baldío" else " "
-        aviso["x_construido"] = "X" if clasif == "Construido" else " "
+        # Mapeo Múltiple para casillas
+        aviso["x_urbano"] = "X" if "Urbano" in clasif else " "
+        aviso["x_rustico"] = "X" if "Rústico" in clasif else " "
+        aviso["x_baldio"] = "X" if "Baldío" in clasif else " "
+        aviso["x_construido"] = "X" if "Construido" in clasif else " "
+        
         aviso["x_fraccion"] = "X" if trans == "Fracción" else " "
         aviso["x_resto"] = "X" if trans == "Resto" else " "
         aviso["x_totalidad"] = "X" if trans == "Totalidad" else " "
@@ -178,7 +182,7 @@ async def generar_final(payload: dict):
         return {"success": True, "archivo": nombre_zip_nube, "nombre_descarga": nombre_zip_descarga}
 
 @app.post("/procesar-masivo")
-async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optional[str] = Form(None)):
+async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optional[str] = Form(None), fecha_cierre: Optional[str] = Form("")):
     timestamp_lote = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_zip = f"Paquete_Avisos_Actarium_{timestamp_lote}.zip"
     
@@ -203,15 +207,22 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
             datos_ia = json.loads(respuesta.choices[0].message.content)
             
             for idx, aviso_ia in enumerate(datos_ia.get("avisos", [])):
-                clasif = aviso_ia.get("clasificacion_inmueble", "")
+                
+                if fecha_cierre:
+                    aviso_ia["fecha_cierre"] = fecha_cierre
+
+                clasif = aviso_ia.get("clasificacion_inmueble", [])
+                if isinstance(clasif, str): clasif = [clasif]
+                
                 trans = aviso_ia.get("lo_transmitido", "")
                 municipio_extraido = aviso_ia.get("municipio_inmueble", "")
                 anexo = aviso_ia.get("se_anexa", "Avalúo Bancario")
                 
-                aviso_ia["x_urbano"] = "X" if clasif == "Urbano" else " "
-                aviso_ia["x_rustico"] = "X" if clasif == "Rústico" else " "
-                aviso_ia["x_baldio"] = "X" if clasif == "Baldío" else " "
-                aviso_ia["x_construido"] = "X" if clasif == "Construido" else " "
+                aviso_ia["x_urbano"] = "X" if "Urbano" in clasif else " "
+                aviso_ia["x_rustico"] = "X" if "Rústico" in clasif else " "
+                aviso_ia["x_baldio"] = "X" if "Baldío" in clasif else " "
+                aviso_ia["x_construido"] = "X" if "Construido" in clasif else " "
+
                 aviso_ia["x_fraccion"] = "X" if trans == "Fracción" else " "
                 aviso_ia["x_resto"] = "X" if trans == "Resto" else " "
                 aviso_ia["x_totalidad"] = "X" if trans == "Totalidad" else " "

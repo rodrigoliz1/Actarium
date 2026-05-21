@@ -15,8 +15,8 @@ export default function ProduccionMasiva() {
 
   const [archivos, setArchivos] = useState([]);
   const [procesando, setProcesando] = useState(false);
+  const [fechaGlobal, setFechaGlobal] = useState("");
 
-  // EL CADENERO
   useEffect(() => {
     const revisarLicencia = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -36,7 +36,7 @@ export default function ProduccionMasiva() {
   const manejarSubida = (e) => {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
-      
+
       setArchivos((prevArchivos) => {
         const listaActualizada = [...prevArchivos];
         nuevosArchivos.forEach(nuevo => {
@@ -46,8 +46,7 @@ export default function ProduccionMasiva() {
         });
         return listaActualizada;
       });
-      
-      e.target.value = null; 
+      e.target.value = null;
     }
   };
 
@@ -60,10 +59,14 @@ export default function ProduccionMasiva() {
     setProcesando(true);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
       const formData = new FormData();
       archivos.forEach((archivo) => {
         formData.append("archivos", archivo);
       });
+      formData.append("user_id", user?.id || "");
+      formData.append("fecha_cierre", fechaGlobal);
 
       const respuesta = await fetch("https://actarium-yqof.onrender.com/procesar-masivo", {
         method: "POST",
@@ -79,8 +82,9 @@ export default function ProduccionMasiva() {
         document.body.appendChild(a);
         a.click();
         a.remove();
-        
+
         setArchivos([]);
+        setFechaGlobal("");
         alert("¡Paquete generado con éxito!");
       } else {
         alert("Error procesando el lote de escrituras.");
@@ -93,11 +97,11 @@ export default function ProduccionMasiva() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-[#334155] font-sans">
+    <div className="min-h-screen bg-[#FDFDFD] text-[#334155] font-sans pb-20">
       <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
-            <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
+          <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
+          <h1 className="font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
         </div>
         <Link href="/terminal" className="text-xs uppercase tracking-widest text-gray-400 hover:text-white">← Salir al Lobby</Link>
       </nav>
@@ -106,35 +110,24 @@ export default function ProduccionMasiva() {
         <div className="text-center mb-10">
           <h2 className="text-4xl font-serif text-[#0F172A] mb-4">Producción Masiva (Lote)</h2>
           <p className="text-gray-400 text-lg">
-            Agregue múltiples escrituras a la bandeja. El sistema automatizará el proceso de extracción y empaquetará los avisos en un archivo ZIP.
+            Agregue múltiples escrituras a la bandeja. El sistema automatizará la extracción y empaquetará los avisos en un archivo ZIP.
           </p>
         </div>
 
-        {/* ZONA DE CARGA */}
         <div className="bg-white border-2 border-dashed border-gray-300 py-10 rounded-2xl relative hover:border-[#D4AF37] transition-all text-center mb-8">
-          <input 
-            type="file" 
-            accept=".docx" 
-            multiple 
-            onChange={manejarSubida} 
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
-            title="Haz clic para agregar escrituras"
-          />
+          <input type="file" accept=".docx" multiple onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" title="Haz clic para agregar escrituras" />
           <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-[#FEFCE8]">
             <svg className="w-8 h-8 text-[#0F172A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 4v16m8-8H4"></path></svg>
           </div>
-          <h3 className="text-lg font-medium text-[#0F172A]">
-            Haz clic aquí para agregar escrituras a la bandeja
-          </h3>
+          <h3 className="text-lg font-medium text-[#0F172A]">Haz clic aquí para agregar escrituras a la bandeja</h3>
         </div>
 
-        {/* LISTA VISUAL DE ARCHIVOS SELECCIONADOS */}
         {archivos.length > 0 && (
           <div className="bg-white shadow-md border border-gray-200 rounded-xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h4 className="text-xs font-bold text-[#D4AF37] uppercase tracking-widest mb-4 border-b pb-3">
               Bandeja de Entrada ({archivos.length} documentos)
             </h4>
-            
+
             <ul className="space-y-3 mb-8 max-h-[300px] overflow-y-auto pr-2">
               {archivos.map((archivo, index) => (
                 <li key={index} className="flex justify-between items-center bg-gray-50 p-4 rounded border border-gray-100 hover:border-[#0F172A] transition-colors group">
@@ -142,25 +135,22 @@ export default function ProduccionMasiva() {
                     <svg className="w-6 h-6 text-gray-400 group-hover:text-[#D4AF37] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                     <span className="text-sm font-medium text-[#0F172A]">{archivo.name}</span>
                   </div>
-                  
-                  {/* BOTÓN DE BORRAR */}
-                  <button 
-                    onClick={() => eliminarArchivo(archivo.name)}
-                    className="text-gray-400 hover:text-red-500 transition-colors p-2"
-                    title="Quitar de la bandeja"
-                  >
+                  <button onClick={() => eliminarArchivo(archivo.name)} className="text-gray-400 hover:text-red-500 transition-colors p-2" title="Quitar de la bandeja">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                   </button>
                 </li>
               ))}
             </ul>
 
+            <div className="mb-8 p-6 bg-[#0F172A] rounded-xl flex flex-col md:flex-row items-end gap-4 shadow-inner">
+              <div className="flex-1 w-full">
+                <label className="text-[#D4AF37] text-[10px] font-bold uppercase tracking-widest mb-2 block">Fecha de Cierre (Aplica a todo el lote)</label>
+                <input type="text" value={fechaGlobal} onChange={e => setFechaGlobal(e.target.value)} placeholder="Ej. Zapopan, Jalisco a 15 de Mayo de 2026" className="w-full p-3 rounded bg-white/10 text-white outline-none focus:border-[#D4AF37] border border-transparent text-sm placeholder-gray-500" />
+              </div>
+            </div>
+
             <div className="text-center border-t pt-8">
-              <button 
-                onClick={enviarAlServidorMasivo}
-                disabled={procesando}
-                className="bg-[#0F172A] text-white px-12 py-4 rounded font-bold shadow-lg hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all w-full md:w-auto"
-              >
+              <button onClick={enviarAlServidorMasivo} disabled={procesando} className="bg-[#0F172A] text-white px-12 py-4 rounded font-bold shadow-lg hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all w-full md:w-auto">
                 {procesando ? "Procesando Lote en Segundo Plano..." : `Generar ${archivos.length} Avisos y Descargar ZIP`}
               </button>
             </div>
