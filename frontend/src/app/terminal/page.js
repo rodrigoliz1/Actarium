@@ -267,7 +267,7 @@ export default function Terminal() {
           </div>
 
           {/* HISTORIAL / BÓVEDA MAESTRA */}
-          <h3 className={`text-xl font-serif ${textTitulo} mb-4 flex items-center gap-2`}><span>🗄️</span> Bóveda Inmortal de Avisos</h3>
+          <h3 className={`text-xl font-serif ${textTitulo} mb-4 flex items-center gap-2`}><span>🗄️</span> Archivo de Avisos Generados</h3>
           <div className={`${bgCard} rounded-2xl border overflow-hidden`}>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">

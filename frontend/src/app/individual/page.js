@@ -122,6 +122,7 @@ export default function ProduccionIndividual() {
 
       const respuestaBackend = await res.json();
 
+      // NUEVO: ATRAPAMOS EL ERROR SI ALCANZÓ EL LÍMITE
       if (respuestaBackend.success) {
         const { data, error } = await supabase.storage.from('avisos_generados').download(respuestaBackend.archivo);
         if (!error) {
@@ -133,7 +134,8 @@ export default function ProduccionIndividual() {
           alert("Error al descargar el archivo desde la bóveda.");
         }
       } else {
-        alert("Hubo un error al generar el archivo final.");
+        // Mostramos el mensaje exacto que manda Python (ej. Límite alcanzado)
+        alert(respuestaBackend.error || "Hubo un error al generar el archivo final.");
       }
     } catch (err) {
       console.error(err);
@@ -153,7 +155,7 @@ export default function ProduccionIndividual() {
             <div className="absolute inset-3 border-[4px] border-b-white border-l-white border-t-transparent border-r-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
             <img src="/logo.png" className="w-16 h-16 object-contain animate-pulse" alt="Logo" />
           </div>
-          <h3 className="text-3xl font-serif text-[#D4AF37] mb-3">ACTARIUM AI</h3>
+          <h3 className="text-3xl font-serif text-[#D4AF37] mb-3">ACTARIUM</h3>
           <p className="text-gray-300 tracking-[0.2em] uppercase text-xs font-bold animate-pulse">{mensajeCarga}</p>
         </div>
       )}

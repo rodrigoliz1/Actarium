@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from docx import Document
@@ -49,16 +49,19 @@ def obtener_plantilla_y_municipio(municipio_extraido: str):
     elif "TONAL" in mun: return "Plantilla_Tonala.docx", "TONALA"
     else: return "Plantilla_Generica.docx", mun if mun and mun != "GENERICO" else "GENERICO"
 
-def extraer_texto_documento(ruta: str) -> str:
-    escritura = Document(ruta)
-    texto = []
-    for p in escritura.paragraphs:
-        if p.text.strip(): texto.append(p.text.strip())
-    for table in escritura.tables:
-        for row in table.rows:
-            fila = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-            if fila: texto.append(" | ".join(fila))
-    return " \n ".join(texto)
+# --- FUNCIONES DE LÍMITE DE CUENTA ---
+def obtener_uso_y_limite(user_id: str):
+    """Consulta la Bóveda para saber cuántos avisos ha gastado la Notaría y cuál es su límite"""
+    if not user_id: return 0, 99999
+    res = supabase.table("licencias").select("usos_mes, limite_mensual").eq("usada_por", user_id).execute()
+    if res.data:
+        return res.data[0].get("usos_mes", 0), res.data[0].get("limite_mensual", 3)
+    return 0, 99999
+
+def actualizar_uso(user_id: str, usos_actuales: int, nuevos_gastados: int):
+    """Suma los avisos generados a la cuota mensual de la Notaría"""
+    if user_id:
+        supabase.table("licencias").update({"usos_mes": usos_actuales + nuevos_gastados}).eq("usada_por", user_id).execute()
 
 PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON con la siguiente estructura estricta:
 {
@@ -76,24 +79,24 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON c
     }
   ]
 }
-REGLAS DE ORO INQUEBRANTABLES:
-1. CERTIFICADO DEL NOTARIO: Busca al inicio de la escritura el párrafo largo donde el fedatario declara formalmente su adscripción, acuerdos del poder ejecutivo, y publicaciones en el Periódico Oficial. COPIA ESTE PÁRRAFO COMPLETO TEXTUAL.
-2. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo "El señor", "Los señores esposos".
-3. GENERALES EXACTAS: NO RESUMAS. COPIA EL PÁRRAFO COMPLETO donde se mencionan las generales (edad, estado civil).
-4. VALORES MONETARIOS: Extrae con precisión matemática el 'valor_operacion', 'valor_avaluo' y 'valor_catastral'.
-5. ANTECEDENTES Y UBICACIÓN: Copia el antecedente de propiedad y linderos de forma LITERAL.
-6. CLASIFICACIÓN: DEBE SER UN ARREGLO con opciones: ["Urbano", "Rústico", "Baldío", "Construido"].
-7. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
-8. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
+REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
+1. CERTIFICADO DEL NOTARIO (CRÍTICO): Busca al inicio de la escritura el párrafo largo donde el fedatario declara formalmente su adscripción, nombramiento, acuerdos del ejecutivo y fechas de publicación. COPIA ESTE PÁRRAFO COMPLETO DE FORMA TEXTUAL E ÍNTEGRA.
+2. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "La sociedad mercantil", etc.
+3. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales (edad, estado civil, ocupación).
+4. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal. No omitas el 'total_liquidacion'.
+5. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL y COMPLETA.
+6. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
+7. CLASIFICACIÓN: 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
+8. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
+9. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...)):
     ruta_temporal = f"temp_{file.filename}"
     with open(ruta_temporal, "wb") as buffer: 
         buffer.write(await file.read())
-        
-    texto_completo = extraer_texto_documento(ruta_temporal)
-    texto_optimizado = re.sub(r'\s+', ' ', texto_completo).strip()
+    escritura = Document(ruta_temporal)
+    texto_completo = " ".join([p.text for p in escritura.paragraphs])
     os.remove(ruta_temporal)
     
     respuesta = ia_client.chat.completions.create(
@@ -101,27 +104,21 @@ async def extraer_datos(file: UploadFile = File(...)):
         response_format={ "type": "json_object" },
         messages=[
             {"role": "system", "content": PROMPT_SISTEMA},
-            {"role": "user", "content": texto_optimizado}
+            {"role": "user", "content": texto_completo}
         ]
     )
     return json.loads(respuesta.choices[0].message.content)
-
-def descontar_cuota_licencia(user_id: str, cantidad_avisos: int):
-    """Función para sumar los avisos consumidos a la cuota del usuario"""
-    try:
-        res_lic = supabase.table("licencias").select("usos_mes").eq("usada_por", user_id).execute()
-        if res_lic.data:
-            usos_actuales = res_lic.data[0].get("usos_mes", 0)
-            nuevos_usos = usos_actuales + cantidad_avisos
-            supabase.table("licencias").update({"usos_mes": nuevos_usos}).eq("usada_por", user_id).execute()
-    except Exception as e:
-        print(f"Error al descontar cuota: {e}")
 
 @app.post("/generar-final")
 async def generar_final(payload: dict):
     avisos = payload.get("avisos", [])
     user_id = payload.get("user_id", "")
     
+    # 1. VERIFICAMOS LÍMITE ANTES DE GENERAR NADA
+    usos, limite = obtener_uso_y_limite(user_id)
+    if usos >= limite:
+        return {"success": False, "error": f"Límite de tu plan alcanzado ({usos}/{limite} Avisos). Dirígete a 'Mi Cuenta' para adquirir un plan superior."}
+
     archivos_generados = []
     timestamp = datetime.now().strftime("%H%M%S")
     
@@ -164,9 +161,8 @@ async def generar_final(payload: dict):
         doc.save(ruta_local)
         archivos_generados.append({"ruta_local": ruta_local, "nombre_unico": nombre_unico, "nombre_oficial": nombre_oficial, "aviso_data": aviso})
 
-    # Descontamos la cuota
-    if user_id and archivos_generados:
-        descontar_cuota_licencia(user_id, len(archivos_generados))
+    # 2. SI TODO SALIÓ BIEN, COBRAMOS LOS AVISOS DE LA CUENTA
+    actualizar_uso(user_id, usos, len(archivos_generados))
 
     if len(archivos_generados) == 1:
         archivo_data = archivos_generados[0]
@@ -217,19 +213,24 @@ async def generar_final(payload: dict):
 
 @app.post("/procesar-masivo")
 async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optional[str] = Form(None), fecha_cierre: Optional[str] = Form("")):
+    
+    # 1. VERIFICAMOS LÍMITE ANTES DE DEJARLOS ENTRAR A LA MASIVA
+    usos, limite = obtener_uso_y_limite(user_id)
+    if usos >= limite:
+        raise HTTPException(status_code=403, detail=f"Límite de tu plan alcanzado ({usos}/{limite} Avisos). Dirígete a 'Mi Cuenta' para adquirir un plan superior.")
+
     timestamp_lote = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_zip = f"Paquete_Avisos_Actarium_{timestamp_lote}.zip"
     
-    total_avisos_procesados = 0
+    total_avisos_generados = 0
 
     with zipfile.ZipFile(nombre_zip, 'w') as zipf:
         for archivo in archivos:
             ruta_temporal = f"temp_{archivo.filename}"
             with open(ruta_temporal, "wb") as buffer: 
                 buffer.write(await archivo.read())
-                
-            texto_completo = extraer_texto_documento(ruta_temporal)
-            texto_optimizado = re.sub(r'\s+', ' ', texto_completo).strip()
+            escritura = Document(ruta_temporal)
+            texto_completo = " ".join([p.text for p in escritura.paragraphs])
             os.remove(ruta_temporal)
             
             respuesta = ia_client.chat.completions.create(
@@ -237,15 +238,15 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 response_format={ "type": "json_object" },
                 messages=[
                     {"role": "system", "content": PROMPT_SISTEMA},
-                    {"role": "user", "content": texto_optimizado}
+                    {"role": "user", "content": texto_completo}
                 ]
             )
             
             datos_ia = json.loads(respuesta.choices[0].message.content)
-            avisos_extraidos = datos_ia.get("avisos", [])
-            total_avisos_procesados += len(avisos_extraidos)
             
-            for idx, aviso_ia in enumerate(avisos_extraidos):
+            for idx, aviso_ia in enumerate(datos_ia.get("avisos", [])):
+                total_avisos_generados += 1
+                
                 if fecha_cierre:
                     aviso_ia["fecha_cierre"] = fecha_cierre
 
@@ -304,8 +305,7 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 zipf.write(ruta_local, arcname=ruta_en_zip)
                 os.remove(ruta_local)
 
-    # Descontamos la cuota total de la masiva
-    if user_id and total_avisos_procesados > 0:
-        descontar_cuota_licencia(user_id, total_avisos_procesados)
+    # 2. SI TODO SALIÓ BIEN, COBRAMOS LOS AVISOS A LA CUENTA
+    actualizar_uso(user_id, usos, total_avisos_generados)
             
     return FileResponse(nombre_zip, filename=nombre_zip, media_type="application/zip")
