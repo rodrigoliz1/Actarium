@@ -49,17 +49,24 @@ def obtener_plantilla_y_municipio(municipio_extraido: str):
     elif "TONAL" in mun: return "Plantilla_Tonala.docx", "TONALA"
     else: return "Plantilla_Generica.docx", mun if mun and mun != "GENERICO" else "GENERICO"
 
-# --- FUNCIONES DE LÍMITE DE CUENTA ---
+def extraer_texto_documento(ruta: str) -> str:
+    escritura = Document(ruta)
+    texto = []
+    for p in escritura.paragraphs:
+        if p.text.strip(): texto.append(p.text.strip())
+    for table in escritura.tables:
+        for row in table.rows:
+            fila = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if fila: texto.append(" | ".join(fila))
+    return " \n ".join(texto)
+
 def obtener_uso_y_limite(user_id: str):
-    """Consulta la Bóveda para saber cuántos avisos ha gastado la Notaría y cuál es su límite"""
     if not user_id: return 0, 99999
     res = supabase.table("licencias").select("usos_mes, limite_mensual").eq("usada_por", user_id).execute()
-    if res.data:
-        return res.data[0].get("usos_mes", 0), res.data[0].get("limite_mensual", 3)
+    if res.data: return res.data[0].get("usos_mes", 0), res.data[0].get("limite_mensual", 3)
     return 0, 99999
 
 def actualizar_uso(user_id: str, usos_actuales: int, nuevos_gastados: int):
-    """Suma los avisos generados a la cuota mensual de la Notaría"""
     if user_id:
         supabase.table("licencias").update({"usos_mes": usos_actuales + nuevos_gastados}).eq("usada_por", user_id).execute()
 
@@ -79,45 +86,46 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON c
     }
   ]
 }
-REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
-1. CERTIFICADO DEL NOTARIO (CRÍTICO): Busca al inicio de la escritura el párrafo largo donde el fedatario declara formalmente su adscripción, nombramiento, acuerdos del ejecutivo y fechas de publicación. COPIA ESTE PÁRRAFO COMPLETO DE FORMA TEXTUAL E ÍNTEGRA.
-2. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "La sociedad mercantil", etc.
-3. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales (edad, estado civil, ocupación).
-4. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal. No omitas el 'total_liquidacion'.
-5. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL y COMPLETA.
-6. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
-7. CLASIFICACIÓN: 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
-8. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
-9. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
+REGLAS DE ORO INQUEBRANTABLES:
+1. CERTIFICADO DEL NOTARIO: Busca el párrafo largo de adscripción y nombramiento del notario al inicio. COPIA TEXTUALMENTE.
+2. NOMBRES CON TÍTULOS: Incluye prefijos como "El señor", "La sociedad mercantil".
+3. GENERALES EXACTAS: NO RESUMAS. Copia el párrafo literal.
+4. RFC Y CURP (CRÍTICO): Extrae ÚNICAMENTE el código alfanumérico. OMITE Y ELIMINA el deletreo fonético (ej. ignora "letras O, E, C...").
+5. VALORES MONETARIOS: Extrae el 'valor_operacion', 'avaluo', 'catastral' y el 'impuesto_monto'. El 'total_liquidacion' debe ser IGUAL al 'impuesto_monto'.
+6. ANTECEDENTES Y UBICACIÓN: Copia linderos y antecedentes de forma literal.
+7. CLASIFICACIÓN: DEBE SER UN ARREGLO ["Urbano", "Rústico", "Baldío", "Construido"].
+8. SUBDIVISIONES: Un objeto en 'avisos' POR CADA INMUEBLE.
+9. 'se_anexa': 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...)):
     ruta_temporal = f"temp_{file.filename}"
-    with open(ruta_temporal, "wb") as buffer: 
-        buffer.write(await file.read())
-    escritura = Document(ruta_temporal)
-    texto_completo = " ".join([p.text for p in escritura.paragraphs])
+    with open(ruta_temporal, "wb") as buffer: buffer.write(await file.read())
+    texto_completo = extraer_texto_documento(ruta_temporal)
+    texto_optimizado = re.sub(r'\s+', ' ', texto_completo).strip()
     os.remove(ruta_temporal)
     
     respuesta = ia_client.chat.completions.create(
         model="gpt-4o-mini",
         response_format={ "type": "json_object" },
-        messages=[
-            {"role": "system", "content": PROMPT_SISTEMA},
-            {"role": "user", "content": texto_completo}
-        ]
+        messages=[{"role": "system", "content": PROMPT_SISTEMA}, {"role": "user", "content": texto_optimizado}]
     )
-    return json.loads(respuesta.choices[0].message.content)
+    
+    datos_ia = json.loads(respuesta.choices[0].message.content)
+    # Refuerzo por código para sincronizar total e impuesto
+    for aviso in datos_ia.get("avisos", []):
+        if not aviso.get("total_liquidacion"):
+            aviso["total_liquidacion"] = aviso.get("impuesto_monto", "")
+            
+    return datos_ia
 
 @app.post("/generar-final")
 async def generar_final(payload: dict):
     avisos = payload.get("avisos", [])
     user_id = payload.get("user_id", "")
     
-    # 1. VERIFICAMOS LÍMITE ANTES DE GENERAR NADA
     usos, limite = obtener_uso_y_limite(user_id)
-    if usos >= limite:
-        return {"success": False, "error": f"Límite de tu plan alcanzado ({usos}/{limite} Avisos). Dirígete a 'Mi Cuenta' para adquirir un plan superior."}
+    if usos >= limite: return {"success": False, "error": f"Límite de tu plan alcanzado ({usos}/{limite} Avisos)."}
 
     archivos_generados = []
     timestamp = datetime.now().strftime("%H%M%S")
@@ -126,34 +134,29 @@ async def generar_final(payload: dict):
         clasif = aviso.get("clasificacion_inmueble", [])
         if isinstance(clasif, str): clasif = [clasif]
         
-        trans = aviso.get("lo_transmitido", "")
-        municipio_extraido = aviso.get("municipio_inmueble", "")
-        anexo = aviso.get("se_anexa", "Avalúo Bancario")
-        
         aviso["x_urbano"] = "X" if "Urbano" in clasif else " "
         aviso["x_rustico"] = "X" if "Rústico" in clasif else " "
         aviso["x_baldio"] = "X" if "Baldío" in clasif else " "
         aviso["x_construido"] = "X" if "Construido" in clasif else " "
         
+        trans = aviso.get("lo_transmitido", "")
         aviso["x_fraccion"] = "X" if trans == "Fracción" else " "
         aviso["x_resto"] = "X" if trans == "Resto" else " "
         aviso["x_totalidad"] = "X" if trans == "Totalidad" else " "
         
+        anexo = aviso.get("se_anexa", "Avalúo Bancario")
         aviso["x_deslinde"] = "X" if anexo == "Deslinde" else " "
         aviso["x_avaluo"] = "X" if anexo == "Avalúo Bancario" else " "
         aviso["x_certificado_no_prop"] = "X" if anexo == "Certificado de No Propiedad" else " "
         aviso["x_certificado_no_adeudo"] = "X" if anexo == "Certificado de no Adeudo" else " "
 
-        plantilla_doc, mun_limpio = obtener_plantilla_y_municipio(municipio_extraido)
-        if not os.path.exists(plantilla_doc):
-            plantilla_doc = "Plantilla_Generica.docx"
+        plantilla_doc, mun_limpio = obtener_plantilla_y_municipio(aviso.get("municipio_inmueble", ""))
+        if not os.path.exists(plantilla_doc): plantilla_doc = "Plantilla_Generica.docx"
 
         doc = DocxTemplate(plantilla_doc)
         doc.render(aviso)
         
-        num_escritura_raw = aviso.get('escritura_numero', 'SN')
-        num_escritura = limpiar_nombre_archivo(num_escritura_raw)
-
+        num_escritura = limpiar_nombre_archivo(aviso.get('escritura_numero', 'SN'))
         nombre_oficial = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.docx"
         nombre_unico = f"ATP_{num_escritura}_{mun_limpio}_{timestamp}_{idx+1}.docx" 
         ruta_local = f"temp_{nombre_unico}"
@@ -161,151 +164,96 @@ async def generar_final(payload: dict):
         doc.save(ruta_local)
         archivos_generados.append({"ruta_local": ruta_local, "nombre_unico": nombre_unico, "nombre_oficial": nombre_oficial, "aviso_data": aviso})
 
-    # 2. SI TODO SALIÓ BIEN, COBRAMOS LOS AVISOS DE LA CUENTA
     actualizar_uso(user_id, usos, len(archivos_generados))
 
     if len(archivos_generados) == 1:
         archivo_data = archivos_generados[0]
-        with open(archivo_data["ruta_local"], "rb") as f:
-            supabase.storage.from_("avisos_generados").upload(archivo_data["nombre_unico"], f)
-        
+        with open(archivo_data["ruta_local"], "rb") as f: supabase.storage.from_("avisos_generados").upload(archivo_data["nombre_unico"], f)
         if user_id:
             supabase.table("historial").insert({
-                "user_id": user_id, 
-                "escritura": str(archivo_data["aviso_data"].get('escritura_numero', 'SN')),
-                "acto": archivo_data["aviso_data"].get("naturaleza_acto", "-"), 
-                "vendedor": archivo_data["aviso_data"].get("nombre_vendedor", "-"),
-                "comprador": archivo_data["aviso_data"].get("nombre_comprador", "-"), 
-                "archivo": archivo_data["nombre_unico"],
-                "datos_json": json.dumps(archivo_data["aviso_data"])
+                "user_id": user_id, "escritura": str(archivo_data["aviso_data"].get('escritura_numero', 'SN')),
+                "acto": archivo_data["aviso_data"].get("naturaleza_acto", "-"), "vendedor": archivo_data["aviso_data"].get("nombre_vendedor", "-"),
+                "comprador": archivo_data["aviso_data"].get("nombre_comprador", "-"), "archivo": archivo_data["nombre_unico"], "datos_json": json.dumps(archivo_data["aviso_data"])
             }).execute()
-            
         os.remove(archivo_data["ruta_local"])
         return {"success": True, "archivo": archivo_data["nombre_unico"], "nombre_descarga": archivo_data["nombre_oficial"]}
-    
     else:
         num_escritura_zip = limpiar_nombre_archivo(avisos[0].get('escritura_numero', 'SN'))
-        nombre_zip_descarga = f"Avisos_Subdivision_{num_escritura_zip}.zip"
         nombre_zip_nube = f"Avisos_Subdivision_{num_escritura_zip}_{timestamp}.zip"
-        
         with zipfile.ZipFile(nombre_zip_nube, 'w') as zipf:
             for arch in archivos_generados:
                 zipf.write(arch["ruta_local"], arcname=arch["nombre_oficial"])
-                with open(arch["ruta_local"], "rb") as f:
-                    supabase.storage.from_("avisos_generados").upload(arch["nombre_unico"], f)
-                if user_id:
-                    supabase.table("historial").insert({
-                        "user_id": user_id, 
-                        "escritura": str(arch["aviso_data"].get('escritura_numero', 'SN')),
-                        "acto": arch["aviso_data"].get("naturaleza_acto", "-"), 
-                        "vendedor": arch["aviso_data"].get("nombre_vendedor", "-"),
-                        "comprador": arch["aviso_data"].get("nombre_comprador", "-"), 
-                        "archivo": arch["nombre_unico"],
-                        "datos_json": json.dumps(arch["aviso_data"])
-                    }).execute()
+                with open(arch["ruta_local"], "rb") as f: supabase.storage.from_("avisos_generados").upload(arch["nombre_unico"], f)
+                if user_id: supabase.table("historial").insert({"user_id": user_id, "escritura": str(arch["aviso_data"].get('escritura_numero', 'SN')), "acto": arch["aviso_data"].get("naturaleza_acto", "-"), "vendedor": arch["aviso_data"].get("nombre_vendedor", "-"), "comprador": arch["aviso_data"].get("nombre_comprador", "-"), "archivo": arch["nombre_unico"], "datos_json": json.dumps(arch["aviso_data"])}).execute()
                 os.remove(arch["ruta_local"])
-        
-        with open(nombre_zip_nube, "rb") as f:
-            supabase.storage.from_("avisos_generados").upload(nombre_zip_nube, f)
+        with open(nombre_zip_nube, "rb") as f: supabase.storage.from_("avisos_generados").upload(nombre_zip_nube, f)
         os.remove(nombre_zip_nube)
-        
-        return {"success": True, "archivo": nombre_zip_nube, "nombre_descarga": nombre_zip_descarga}
+        return {"success": True, "archivo": nombre_zip_nube, "nombre_descarga": f"Avisos_Subdivision_{num_escritura_zip}.zip"}
 
 @app.post("/procesar-masivo")
 async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optional[str] = Form(None), fecha_cierre: Optional[str] = Form("")):
-    
-    # 1. VERIFICAMOS LÍMITE ANTES DE DEJARLOS ENTRAR A LA MASIVA
     usos, limite = obtener_uso_y_limite(user_id)
-    if usos >= limite:
-        raise HTTPException(status_code=403, detail=f"Límite de tu plan alcanzado ({usos}/{limite} Avisos). Dirígete a 'Mi Cuenta' para adquirir un plan superior.")
+    if usos >= limite: raise HTTPException(status_code=403, detail=f"Límite de tu plan alcanzado ({usos}/{limite} Avisos).")
 
     timestamp_lote = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_zip = f"Paquete_Avisos_Actarium_{timestamp_lote}.zip"
-    
     total_avisos_generados = 0
 
     with zipfile.ZipFile(nombre_zip, 'w') as zipf:
         for archivo in archivos:
             ruta_temporal = f"temp_{archivo.filename}"
-            with open(ruta_temporal, "wb") as buffer: 
-                buffer.write(await archivo.read())
-            escritura = Document(ruta_temporal)
-            texto_completo = " ".join([p.text for p in escritura.paragraphs])
+            with open(ruta_temporal, "wb") as buffer: buffer.write(await archivo.read())
+            texto_optimizado = re.sub(r'\s+', ' ', extraer_texto_documento(ruta_temporal)).strip()
             os.remove(ruta_temporal)
             
             respuesta = ia_client.chat.completions.create(
-                model="gpt-4o-mini",
-                response_format={ "type": "json_object" },
-                messages=[
-                    {"role": "system", "content": PROMPT_SISTEMA},
-                    {"role": "user", "content": texto_completo}
-                ]
+                model="gpt-4o-mini", response_format={ "type": "json_object" },
+                messages=[{"role": "system", "content": PROMPT_SISTEMA}, {"role": "user", "content": texto_optimizado}]
             )
             
             datos_ia = json.loads(respuesta.choices[0].message.content)
-            
             for idx, aviso_ia in enumerate(datos_ia.get("avisos", [])):
                 total_avisos_generados += 1
-                
-                if fecha_cierre:
-                    aviso_ia["fecha_cierre"] = fecha_cierre
+                if fecha_cierre: aviso_ia["fecha_cierre"] = fecha_cierre
+                if not aviso_ia.get("total_liquidacion"): aviso_ia["total_liquidacion"] = aviso_ia.get("impuesto_monto", "")
 
                 clasif = aviso_ia.get("clasificacion_inmueble", [])
                 if isinstance(clasif, str): clasif = [clasif]
-                
-                trans = aviso_ia.get("lo_transmitido", "")
-                municipio_extraido = aviso_ia.get("municipio_inmueble", "")
-                anexo = aviso_ia.get("se_anexa", "Avalúo Bancario")
-                
                 aviso_ia["x_urbano"] = "X" if "Urbano" in clasif else " "
                 aviso_ia["x_rustico"] = "X" if "Rústico" in clasif else " "
                 aviso_ia["x_baldio"] = "X" if "Baldío" in clasif else " "
                 aviso_ia["x_construido"] = "X" if "Construido" in clasif else " "
 
+                trans = aviso_ia.get("lo_transmitido", "")
                 aviso_ia["x_fraccion"] = "X" if trans == "Fracción" else " "
                 aviso_ia["x_resto"] = "X" if trans == "Resto" else " "
                 aviso_ia["x_totalidad"] = "X" if trans == "Totalidad" else " "
 
+                anexo = aviso_ia.get("se_anexa", "Avalúo Bancario")
                 aviso_ia["x_deslinde"] = "X" if anexo == "Deslinde" else " "
                 aviso_ia["x_avaluo"] = "X" if anexo == "Avalúo Bancario" else " "
                 aviso_ia["x_certificado_no_prop"] = "X" if anexo == "Certificado de No Propiedad" else " "
                 aviso_ia["x_certificado_no_adeudo"] = "X" if anexo == "Certificado de no Adeudo" else " "
                 
-                plantilla_doc, mun_limpio = obtener_plantilla_y_municipio(municipio_extraido)
-                if not os.path.exists(plantilla_doc):
-                    plantilla_doc = "Plantilla_Generica.docx"
+                mun_limpio = obtener_plantilla_y_municipio(aviso_ia.get("municipio_inmueble", ""))[1]
+                plantilla_doc = obtener_plantilla_y_municipio(aviso_ia.get("municipio_inmueble", ""))[0]
+                if not os.path.exists(plantilla_doc): plantilla_doc = "Plantilla_Generica.docx"
 
                 doc = DocxTemplate(plantilla_doc)
                 doc.render(aviso_ia)
                 
-                num_escritura_raw = aviso_ia.get('escritura_numero', 'SN')
-                num_escritura = limpiar_nombre_archivo(num_escritura_raw)
+                num_escritura = limpiar_nombre_archivo(aviso_ia.get('escritura_numero', 'SN'))
                 nombre_limpio = limpiar_nombre_archivo(archivo.filename.replace(".docx", ""))
-                
                 nombre_archivo_final = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.docx" if len(datos_ia.get("avisos", [])) > 1 else f"ATP_{num_escritura}_{mun_limpio}.docx"
-                ruta_en_zip = f"{mun_limpio}/{nombre_limpio}/{nombre_archivo_final}"
                 
-                timestamp_individual = datetime.now().strftime("%H%M%S")
-                nombre_unico_nube = f"ATP_{num_escritura}_{mun_limpio}_{timestamp_individual}_{idx+1}.docx"
+                nombre_unico_nube = f"ATP_{num_escritura}_{mun_limpio}_{datetime.now().strftime('%H%M%S')}_{idx+1}.docx"
                 ruta_local = f"temp_{nombre_unico_nube}"
-                
                 doc.save(ruta_local)
                 
-                with open(ruta_local, "rb") as f:
-                    supabase.storage.from_("avisos_generados").upload(nombre_unico_nube, f)
-                
-                if user_id:
-                    supabase.table("historial").insert({
-                        "user_id": user_id, "escritura": str(num_escritura),
-                        "acto": aviso_ia.get("naturaleza_acto", "-"), "vendedor": aviso_ia.get("nombre_vendedor", "-"),
-                        "comprador": aviso_ia.get("nombre_comprador", "-"), "archivo": nombre_unico_nube,
-                        "datos_json": json.dumps(aviso_ia)
-                    }).execute()
-                    
-                zipf.write(ruta_local, arcname=ruta_en_zip)
+                with open(ruta_local, "rb") as f: supabase.storage.from_("avisos_generados").upload(nombre_unico_nube, f)
+                if user_id: supabase.table("historial").insert({"user_id": user_id, "escritura": str(num_escritura), "acto": aviso_ia.get("naturaleza_acto", "-"), "vendedor": aviso_ia.get("nombre_vendedor", "-"), "comprador": aviso_ia.get("nombre_comprador", "-"), "archivo": nombre_unico_nube, "datos_json": json.dumps(aviso_ia)}).execute()
+                zipf.write(ruta_local, arcname=f"{mun_limpio}/{nombre_limpio}/{nombre_archivo_final}")
                 os.remove(ruta_local)
 
-    # 2. SI TODO SALIÓ BIEN, COBRAMOS LOS AVISOS A LA CUENTA
-    actualizar_uso(user_id, usos, total_avisos_generados)
-            
+    if user_id and total_avisos_generados > 0: actualizar_uso(user_id, usos, total_avisos_generados)
     return FileResponse(nombre_zip, filename=nombre_zip, media_type="application/zip")
