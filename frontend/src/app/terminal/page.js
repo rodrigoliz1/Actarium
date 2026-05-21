@@ -226,7 +226,6 @@ export default function Terminal() {
           <img src="/logo.png" alt="Logo Actarium" className="w-10 h-10 object-contain" />
           <div>
             <h1 className="text-lg md:text-xl font-serif tracking-widest text-[#D4AF37]">ACTARIUM</h1>
-            <p className="text-[9px] uppercase tracking-wider text-gray-400 font-bold hidden sm:block">Notary Management Ecosystem</p>
           </div>
         </div>
 

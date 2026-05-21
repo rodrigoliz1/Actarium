@@ -15,6 +15,7 @@ export default function ProduccionMasiva() {
 
   const [archivos, setArchivos] = useState([]);
   const [procesando, setProcesando] = useState(false);
+  const [mensajeCarga, setMensajeCarga] = useState("Preparando lote de escrituras...");
   const [fechaGlobal, setFechaGlobal] = useState("");
 
   useEffect(() => {
@@ -58,6 +59,18 @@ export default function ProduccionMasiva() {
     if (archivos.length === 0) return;
     setProcesando(true);
 
+    const mensajes = [
+      "Escaneando lote de documentos...",
+      "Extrayendo datos de múltiples escrituras...",
+      "Estructurando paquetes zip en la nube...",
+      "Asignando plantillas municipales por documento..."
+    ];
+    let i = 0;
+    const intervaloCarga = setInterval(() => {
+      setMensajeCarga(mensajes[i]);
+      i = (i + 1) % mensajes.length;
+    }, 2000);
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -93,11 +106,27 @@ export default function ProduccionMasiva() {
       console.error(error);
       alert("Error de conexión con el servidor Actarium.");
     }
+
+    clearInterval(intervaloCarga);
     setProcesando(false);
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-[#334155] font-sans pb-20">
+    <div className="min-h-screen bg-[#FDFDFD] text-[#334155] font-sans pb-20 relative">
+
+      {/* PANTALLA DE CARGA ÉPICA (OVERLAY) */}
+      {procesando && (
+        <div className="fixed inset-0 z-50 bg-[#0F172A]/95 backdrop-blur-md flex flex-col items-center justify-center">
+          <div className="relative w-40 h-40 flex items-center justify-center mb-8">
+            <div className="absolute inset-0 border-[4px] border-t-[#D4AF37] border-r-[#D4AF37] border-b-transparent border-l-transparent rounded-full animate-spin"></div>
+            <div className="absolute inset-3 border-[4px] border-b-white border-l-white border-t-transparent border-r-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+            <img src="/logo.png" className="w-16 h-16 object-contain animate-pulse" alt="Logo" />
+          </div>
+          <h3 className="text-3xl font-serif text-[#D4AF37] mb-3">ACTARIUM AI</h3>
+          <p className="text-gray-300 tracking-[0.2em] uppercase text-xs font-bold animate-pulse">{mensajeCarga}</p>
+        </div>
+      )}
+
       <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
           <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
@@ -151,7 +180,7 @@ export default function ProduccionMasiva() {
 
             <div className="text-center border-t pt-8">
               <button onClick={enviarAlServidorMasivo} disabled={procesando} className="bg-[#0F172A] text-white px-12 py-4 rounded font-bold shadow-lg hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all w-full md:w-auto">
-                {procesando ? "Procesando Lote en Segundo Plano..." : `Generar ${archivos.length} Avisos y Descargar ZIP`}
+                Generar {archivos.length} Avisos y Descargar ZIP
               </button>
             </div>
           </div>

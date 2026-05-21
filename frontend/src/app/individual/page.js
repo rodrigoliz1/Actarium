@@ -16,10 +16,8 @@ export default function ProduccionIndividual() {
   const [paso, setPaso] = useState(1);
   const [avisos, setAvisos] = useState([]);
   const [cargando, setCargando] = useState(false);
-
-  const [fechaGlobal, setFechaGlobal] = useState("");
-
   const [mensajeCarga, setMensajeCarga] = useState("Iniciando análisis cognitivo...");
+  const [fechaGlobal, setFechaGlobal] = useState("");
 
   useEffect(() => {
     const revisarLicencia = async () => {
@@ -29,14 +27,13 @@ export default function ProduccionIndividual() {
     };
     revisarLicencia();
 
-    // NUEVO: Verificamos si venimos del botón "Re-editar" del Lobby
     const avisoGuardado = localStorage.getItem("aviso_editar");
     if (avisoGuardado) {
       try {
         const datosParseados = JSON.parse(avisoGuardado);
         setAvisos([datosParseados]);
-        setPaso(2); // Brincamos directo a la auditoría
-        localStorage.removeItem("aviso_editar"); // Limpiamos para la próxima vez
+        setPaso(2);
+        localStorage.removeItem("aviso_editar");
       } catch (e) {
         console.error("Error al leer datos guardados");
       }
@@ -50,47 +47,20 @@ export default function ProduccionIndividual() {
   const manejarSubida = async (e) => {
     if (!e.target.files[0]) return;
     setCargando(true);
-    const manejarSubida = async (e) => {
-      if (!e.target.files[0]) return;
-      setCargando(true);
 
-      // NUEVO: Carrusel de estados para reducir latencia percibida
-      const mensajes = [
-        "Leyendo proemio y antecedentes...",
-        "Identificando a los transmitentes y adquirentes...",
-        "Extrayendo linderos y medidas catastrales...",
-        "Calculando valores de liquidación...",
-        "Estructurando documento final..."
-      ];
-      let i = 0;
-      const intervaloCarga = setInterval(() => {
-        setMensajeCarga(mensajes[i]);
-        i = (i + 1) % mensajes.length;
-      }, 1500); // Cambia el mensaje cada 1.5 segundos
+    const mensajes = [
+      "Leyendo proemio y antecedentes...",
+      "Identificando a los transmitentes y adquirentes...",
+      "Extrayendo linderos y medidas catastrales...",
+      "Calculando valores de liquidación...",
+      "Estructurando documento oficial..."
+    ];
+    let i = 0;
+    const intervaloCarga = setInterval(() => {
+      setMensajeCarga(mensajes[i]);
+      i = (i + 1) % mensajes.length;
+    }, 2000);
 
-      const formData = new FormData();
-      formData.append("file", e.target.files[0]);
-
-      try {
-        const res = await fetch("https://actarium-yqof.onrender.com/extraer-datos", { method: "POST", body: formData });
-        const data = await res.json();
-
-        const avisosSanitizados = (data.avisos || []).map(aviso => ({
-          ...aviso,
-          clasificacion_inmueble: Array.isArray(aviso.clasificacion_inmueble) ? aviso.clasificacion_inmueble : []
-        }));
-
-        setAvisos(avisosSanitizados);
-        setPaso(2);
-      } catch (err) {
-        console.error(err);
-        alert("Error de conexión con el servidor.");
-      }
-
-      // Detenemos el carrusel cuando termine
-      clearInterval(intervaloCarga);
-      setCargando(false);
-    };
     const formData = new FormData();
     formData.append("file", e.target.files[0]);
 
@@ -98,7 +68,6 @@ export default function ProduccionIndividual() {
       const res = await fetch("https://actarium-yqof.onrender.com/extraer-datos", { method: "POST", body: formData });
       const data = await res.json();
 
-      // Sanitizamos clasificación para asegurar que sea array
       const avisosSanitizados = (data.avisos || []).map(aviso => ({
         ...aviso,
         clasificacion_inmueble: Array.isArray(aviso.clasificacion_inmueble) ? aviso.clasificacion_inmueble : []
@@ -110,6 +79,8 @@ export default function ProduccionIndividual() {
       console.error(err);
       alert("Error de conexión con el servidor.");
     }
+
+    clearInterval(intervaloCarga);
     setCargando(false);
   };
 
@@ -140,6 +111,7 @@ export default function ProduccionIndividual() {
 
   const descargar = async () => {
     setCargando(true);
+    setMensajeCarga("Generando documento oficial en la nube...");
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const payload = { avisos, user_id: user?.id };
@@ -171,7 +143,21 @@ export default function ProduccionIndividual() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-[#334155] pb-20">
+    <div className="min-h-screen bg-[#FDFDFD] text-[#334155] pb-20 relative">
+
+      {/* PANTALLA DE CARGA ÉPICA (OVERLAY) */}
+      {cargando && (
+        <div className="fixed inset-0 z-50 bg-[#0F172A]/95 backdrop-blur-md flex flex-col items-center justify-center">
+          <div className="relative w-40 h-40 flex items-center justify-center mb-8">
+            <div className="absolute inset-0 border-[4px] border-t-[#D4AF37] border-r-[#D4AF37] border-b-transparent border-l-transparent rounded-full animate-spin"></div>
+            <div className="absolute inset-3 border-[4px] border-b-white border-l-white border-t-transparent border-r-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+            <img src="/logo.png" className="w-16 h-16 object-contain animate-pulse" alt="Logo" />
+          </div>
+          <h3 className="text-3xl font-serif text-[#D4AF37] mb-3">ACTARIUM AI</h3>
+          <p className="text-gray-300 tracking-[0.2em] uppercase text-xs font-bold animate-pulse">{mensajeCarga}</p>
+        </div>
+      )}
+
       <nav className="bg-[#0F172A] text-white py-4 px-10 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
           <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain" />
@@ -187,7 +173,7 @@ export default function ProduccionIndividual() {
             <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento .docx</p>
             <div className="bg-white border-2 border-dashed border-gray-200 p-24 rounded-2xl relative hover:border-[#D4AF37] transition-all">
               <input type="file" accept=".docx" onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-              <p className="text-gray-400 font-medium">{cargando ? mensajeCarga : "Arrastre aquí el archivo"}</p>
+              <p className="text-gray-400 font-medium">Arrastre aquí el archivo o haga clic para seleccionar</p>
             </div>
           </div>
         ) : (
@@ -198,7 +184,7 @@ export default function ProduccionIndividual() {
                 <p className="text-sm text-gray-500">Valide la información extraída. Si es una subdivisión, verá múltiples paneles abajo.</p>
               </div>
               <button onClick={descargar} className="bg-[#0F172A] text-white px-8 py-3 rounded font-bold shadow-lg hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all">
-                {cargando ? "Procesando y Guardando..." : avisos.length > 1 ? "Descargar Paquete ZIP" : "Generar Archivo Oficial"}
+                Generar Archivo Oficial
               </button>
             </header>
 

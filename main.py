@@ -49,23 +49,15 @@ def obtener_plantilla_y_municipio(municipio_extraido: str):
     elif "TONAL" in mun: return "Plantilla_Tonala.docx", "TONALA"
     else: return "Plantilla_Generica.docx", mun if mun and mun != "GENERICO" else "GENERICO"
 
-# --- NUEVO MOTOR DE EXTRACCIÓN PROFUNDA (PÁRRAFOS + TABLAS) ---
 def extraer_texto_documento(ruta: str) -> str:
     escritura = Document(ruta)
     texto = []
-    
-    # 1. Extraer párrafos normales
     for p in escritura.paragraphs:
-        if p.text.strip():
-            texto.append(p.text.strip())
-            
-    # 2. Extraer contenido dentro de Tablas (Aquí estaban los valores perdidos)
+        if p.text.strip(): texto.append(p.text.strip())
     for table in escritura.tables:
         for row in table.rows:
             fila = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-            if fila:
-                texto.append(" | ".join(fila)) # Unimos las celdas con un separador
-                
+            if fila: texto.append(" | ".join(fila))
     return " \n ".join(texto)
 
 PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON con la siguiente estructura estricta:
@@ -84,13 +76,13 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON c
     }
   ]
 }
-REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
-1. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "Los señores esposos", "La sociedad mercantil".
-2. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales.
-3. VALORES MONETARIOS (CRÍTICO): Escanea minuciosamente el documento y las tablas. Extrae con precisión matemática el 'valor_operacion', 'valor_avaluo' y 'valor_catastral' incluyendo sus signos de $. Si encuentras un 'Total', ponlo en 'total_liquidacion'.
-4. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL.
-5. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
-6. CLASIFICACIÓN: 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
+REGLAS DE ORO INQUEBRANTABLES:
+1. CERTIFICADO DEL NOTARIO: Busca al inicio de la escritura el párrafo largo donde el fedatario declara formalmente su adscripción, acuerdos del poder ejecutivo, y publicaciones en el Periódico Oficial. COPIA ESTE PÁRRAFO COMPLETO TEXTUAL.
+2. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo "El señor", "Los señores esposos".
+3. GENERALES EXACTAS: NO RESUMAS. COPIA EL PÁRRAFO COMPLETO donde se mencionan las generales (edad, estado civil).
+4. VALORES MONETARIOS: Extrae con precisión matemática el 'valor_operacion', 'valor_avaluo' y 'valor_catastral'.
+5. ANTECEDENTES Y UBICACIÓN: Copia el antecedente de propiedad y linderos de forma LITERAL.
+6. CLASIFICACIÓN: DEBE SER UN ARREGLO con opciones: ["Urbano", "Rústico", "Baldío", "Construido"].
 7. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
 8. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
@@ -100,10 +92,7 @@ async def extraer_datos(file: UploadFile = File(...)):
     with open(ruta_temporal, "wb") as buffer: 
         buffer.write(await file.read())
         
-    # Usamos el nuevo extractor profundo
     texto_completo = extraer_texto_documento(ruta_temporal)
-    
-    # Saneamiento rápido para acelerar la IA
     texto_optimizado = re.sub(r'\s+', ' ', texto_completo).strip()
     os.remove(ruta_temporal)
     
@@ -116,6 +105,17 @@ async def extraer_datos(file: UploadFile = File(...)):
         ]
     )
     return json.loads(respuesta.choices[0].message.content)
+
+def descontar_cuota_licencia(user_id: str, cantidad_avisos: int):
+    """Función para sumar los avisos consumidos a la cuota del usuario"""
+    try:
+        res_lic = supabase.table("licencias").select("usos_mes").eq("usada_por", user_id).execute()
+        if res_lic.data:
+            usos_actuales = res_lic.data[0].get("usos_mes", 0)
+            nuevos_usos = usos_actuales + cantidad_avisos
+            supabase.table("licencias").update({"usos_mes": nuevos_usos}).eq("usada_por", user_id).execute()
+    except Exception as e:
+        print(f"Error al descontar cuota: {e}")
 
 @app.post("/generar-final")
 async def generar_final(payload: dict):
@@ -163,6 +163,10 @@ async def generar_final(payload: dict):
         
         doc.save(ruta_local)
         archivos_generados.append({"ruta_local": ruta_local, "nombre_unico": nombre_unico, "nombre_oficial": nombre_oficial, "aviso_data": aviso})
+
+    # Descontamos la cuota
+    if user_id and archivos_generados:
+        descontar_cuota_licencia(user_id, len(archivos_generados))
 
     if len(archivos_generados) == 1:
         archivo_data = archivos_generados[0]
@@ -216,13 +220,14 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
     timestamp_lote = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_zip = f"Paquete_Avisos_Actarium_{timestamp_lote}.zip"
     
+    total_avisos_procesados = 0
+
     with zipfile.ZipFile(nombre_zip, 'w') as zipf:
         for archivo in archivos:
             ruta_temporal = f"temp_{archivo.filename}"
             with open(ruta_temporal, "wb") as buffer: 
                 buffer.write(await archivo.read())
                 
-            # Usamos el nuevo extractor profundo
             texto_completo = extraer_texto_documento(ruta_temporal)
             texto_optimizado = re.sub(r'\s+', ' ', texto_completo).strip()
             os.remove(ruta_temporal)
@@ -237,8 +242,10 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
             )
             
             datos_ia = json.loads(respuesta.choices[0].message.content)
+            avisos_extraidos = datos_ia.get("avisos", [])
+            total_avisos_procesados += len(avisos_extraidos)
             
-            for idx, aviso_ia in enumerate(datos_ia.get("avisos", [])):
+            for idx, aviso_ia in enumerate(avisos_extraidos):
                 if fecha_cierre:
                     aviso_ia["fecha_cierre"] = fecha_cierre
 
@@ -296,5 +303,9 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                     
                 zipf.write(ruta_local, arcname=ruta_en_zip)
                 os.remove(ruta_local)
+
+    # Descontamos la cuota total de la masiva
+    if user_id and total_avisos_procesados > 0:
+        descontar_cuota_licencia(user_id, total_avisos_procesados)
             
     return FileResponse(nombre_zip, filename=nombre_zip, media_type="application/zip")
