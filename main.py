@@ -66,14 +66,15 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON c
   ]
 }
 REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
-1. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "Los señores esposos", "La sociedad mercantil", tal cual vienen en la escritura.
-2. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales (edad, estado civil, ocupación, nacionalidad).
-3. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal. No omitas el 'total_liquidacion'.
-4. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL y COMPLETA.
-5. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
-6. CLASIFICACIÓN (IMPORTANTE): 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
-7. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
-8. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
+1. CERTIFICADO DEL NOTARIO (CRÍTICO): En 'certificado_notario', busca al inicio de la escritura (en el proemio o primera página) el párrafo largo donde el fedatario declara formalmente su adscripción, nombramiento, acuerdos del poder ejecutivo, subregiones y fechas de publicación en el Periódico Oficial "El Estado de Jalisco" (ej. "Notario Público Titular número... de adscripción al Municipio de... integrado a la región... actuando como asociado..."). COPIA ESTE PÁRRAFO COMPLETO DE FORMA ESTRICTAMENTE TEXTUAL E ÍNTEGRA. PROHIBIDO RESUMIR O DEJARLO VACÍO.
+2. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo prefijos como "El señor", "Los señores esposos", "La sociedad mercantil", tal cual vienen en la escritura.
+3. GENERALES EXACTAS: En 'generales_vendedor' y 'generales_comprador' NO RESUMAS. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO donde se mencionan las generales (edad, estado civil, ocupación, nacionalidad).
+4. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal. No omitas el 'total_liquidacion'.
+5. ANTECEDENTES: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL y COMPLETA.
+6. UBICACIÓN Y USO: COPIA TEXTUALMENTE la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
+7. CLASIFICACIÓN: 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más de estas opciones si aplican: ["Urbano", "Rústico", "Baldío", "Construido"].
+8. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
+9. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...)):
@@ -104,13 +105,12 @@ async def generar_final(payload: dict):
     
     for idx, aviso in enumerate(avisos):
         clasif = aviso.get("clasificacion_inmueble", [])
-        if isinstance(clasif, str): clasif = [clasif] # Por si la IA manda string en vez de array
+        if isinstance(clasif, str): clasif = [clasif]
         
         trans = aviso.get("lo_transmitido", "")
         municipio_extraido = aviso.get("municipio_inmueble", "")
         anexo = aviso.get("se_anexa", "Avalúo Bancario")
         
-        # Mapeo Múltiple para casillas
         aviso["x_urbano"] = "X" if "Urbano" in clasif else " "
         aviso["x_rustico"] = "X" if "Rústico" in clasif else " "
         aviso["x_baldio"] = "X" if "Baldío" in clasif else " "
@@ -207,7 +207,6 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
             datos_ia = json.loads(respuesta.choices[0].message.content)
             
             for idx, aviso_ia in enumerate(datos_ia.get("avisos", [])):
-                
                 if fecha_cierre:
                     aviso_ia["fecha_cierre"] = fecha_cierre
 
