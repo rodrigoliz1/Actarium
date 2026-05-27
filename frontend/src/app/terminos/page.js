@@ -5,7 +5,7 @@ import Link from "next/link";
 export default function TerminosCondiciones() {
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-[#1E293B] font-sans selection:bg-[#D4AF37] selection:text-[#0F172A]">
-      
+
       <nav className="w-full bg-white border-b border-gray-100 px-6 py-5 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-4 cursor-pointer">
           <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain drop-shadow-sm" />
@@ -23,7 +23,7 @@ export default function TerminosCondiciones() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-16 text-gray-600 leading-relaxed space-y-10">
-        
+
         <section>
           <p className="font-medium text-[#0F172A]">
             El presente Acuerdo de Términos y Condiciones ("Acuerdo") rige el acceso y uso de la plataforma de software como servicio (SaaS) Actarium. Al adquirir una licencia, registrarse o utilizar el sistema, usted acepta estar legalmente vinculado a las presentes disposiciones.
@@ -56,7 +56,7 @@ export default function TerminosCondiciones() {
         <section className="space-y-4">
           <h2 className="text-2xl font-serif text-[#0F172A] border-l-4 border-[#D4AF37] pl-4">4. Propiedad Intelectual</h2>
           <p>
-            El código fuente, diseño, algoritmos, logotipos y la marca "Actarium" son propiedad exclusiva de R. Lizárraga Developing. El acceso al servicio se otorga como un derecho de uso (Licencia SaaS) y en ningún caso constituye una venta o transferencia de derechos de propiedad intelectual sobre el software.
+            El código fuente, diseño, algoritmos, logotipos y la marca "Actarium" son propiedad exclusiva de Rodrigo Lizárraga Developing. El acceso al servicio se otorga como un derecho de uso (Licencia SaaS) y en ningún caso constituye una venta o transferencia de derechos de propiedad intelectual sobre el software.
           </p>
         </section>
 

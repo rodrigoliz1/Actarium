@@ -5,7 +5,7 @@ import Link from "next/link";
 export default function AcuerdoLicencia() {
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-[#1E293B] font-sans selection:bg-[#D4AF37] selection:text-[#0F172A]">
-      
+
       {/* NAVBAR MINIMALISTA */}
       <nav className="w-full bg-white border-b border-gray-100 px-6 py-5 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-4 cursor-pointer">
@@ -26,10 +26,10 @@ export default function AcuerdoLicencia() {
 
       {/* CONTENIDO LEGAL */}
       <main className="max-w-4xl mx-auto px-6 py-16 text-gray-600 leading-relaxed space-y-10">
-        
+
         <section className="bg-gray-50 p-8 rounded-2xl border border-gray-100 italic text-sm">
           <p>
-            Este documento constituye un contrato legal entre usted (en adelante "El Licenciatario") y Actarium, operado por R. Lizárraga Developing (en adelante "El Licenciante"). Al activar una licencia o utilizar el software, usted manifiesta su aceptación incondicional a los términos aquí descritos.
+            Este documento constituye un contrato legal entre usted (en adelante "El Licenciatario") y Actarium, operado por Rodrigo Lizárraga Developing (en adelante "El Licenciante"). Al activar una licencia o utilizar el software, usted manifiesta su aceptación incondicional a los términos aquí descritos.
           </p>
         </section>
 
@@ -61,7 +61,7 @@ export default function AcuerdoLicencia() {
         <section className="space-y-4">
           <h2 className="text-2xl font-serif text-[#0F172A] border-l-4 border-[#D4AF37] pl-4">4. Propiedad Intelectual</h2>
           <p>
-            Usted reconoce que todos los derechos de propiedad intelectual sobre el software Actarium, incluyendo sus algoritmos de IA, la interfaz gráfica, el diseño de la base de datos y las marcas asociadas, pertenecen exclusivamente a <strong>R. Lizárraga Developing</strong>. El uso del software no le otorga ningún derecho de propiedad sobre el mismo.
+            Usted reconoce que todos los derechos de propiedad intelectual sobre el software Actarium, incluyendo sus algoritmos de IA, la interfaz gráfica, el diseño de la base de datos y las marcas asociadas, pertenecen exclusivamente a <strong>Rodrigo Lizárraga Developing</strong>. El uso del software no le otorga ningún derecho de propiedad sobre el mismo.
           </p>
         </section>
 

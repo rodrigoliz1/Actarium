@@ -110,7 +110,7 @@ export default function ProduccionMasiva() {
             <div className="absolute inset-3 border-[4px] border-b-white border-l-white border-t-transparent border-r-transparent rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
             <img src="/logo.png" className="w-16 h-16 object-contain animate-pulse" alt="Logo" />
           </div>
-          <h3 className="text-3xl font-serif text-[#D4AF37] mb-3">ACTARIUM AI</h3>
+          <h3 className="text-3xl font-serif text-[#D4AF37] mb-3">ACTARIUM</h3>
           <p className="text-gray-300 tracking-[0.2em] uppercase text-xs font-bold animate-pulse">{mensajeCarga}</p>
         </div>
       )}

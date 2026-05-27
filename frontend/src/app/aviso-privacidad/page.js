@@ -5,7 +5,7 @@ import Link from "next/link";
 export default function AvisoPrivacidad() {
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-[#1E293B] font-sans selection:bg-[#D4AF37] selection:text-[#0F172A]">
-      
+
       {/* NAVBAR MINIMALISTA */}
       <nav className="w-full bg-white border-b border-gray-100 px-6 py-5 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-4 cursor-pointer">
@@ -26,17 +26,17 @@ export default function AvisoPrivacidad() {
 
       {/* CONTENIDO LEGAL */}
       <main className="max-w-4xl mx-auto px-6 py-16 text-gray-600 leading-relaxed space-y-10">
-        
+
         <section>
           <p>
-            En cumplimiento a lo dispuesto por la <strong>Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP)</strong>, su Reglamento y los Lineamientos del Aviso de Privacidad, <strong>Actarium (R. Lizárraga Developing)</strong>, con domicilio en Zapopan, Jalisco, México, informa a sus usuarios, clientes y titulares de datos personales sobre el tratamiento, confidencialidad y seguridad que se le dará a su información.
+            En cumplimiento a lo dispuesto por la <strong>Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP)</strong>, su Reglamento y los Lineamientos del Aviso de Privacidad, <strong>Actarium (Rodrigo Lizárraga Developing)</strong>, con domicilio en Zapopan, Jalisco, México, informa a sus usuarios, clientes y titulares de datos personales sobre el tratamiento, confidencialidad y seguridad que se le dará a su información.
           </p>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-2xl font-serif text-[#0F172A] border-l-4 border-[#D4AF37] pl-4">I. Identidad y Domicilio del Responsable</h2>
           <p>
-            Actarium, operado por R. Lizárraga Developing (en adelante "El Responsable"), es el ente encargado de recabar, resguardar y tratar los datos personales y patrimoniales que sean ingresados a través de nuestra plataforma tecnológica de automatización notarial y registral.
+            Actarium, operado por Rodrigo Lizárraga Developing (en adelante "El Responsable"), es el ente encargado de recabar, resguardar y tratar los datos personales y patrimoniales que sean ingresados a través de nuestra plataforma tecnológica de automatización notarial y registral.
           </p>
         </section>
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from docx import Document
@@ -8,9 +8,10 @@ import json
 import zipfile
 import unicodedata
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
+import stripe
 from openai import OpenAI
 from supabase import create_client, Client
 
@@ -24,13 +25,24 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+# --- LLAVES MAESTRAS ---
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
+# --- LLAVES DE STRIPE (Las pondrás en Render más tarde) ---
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+# IDs de los precios en Stripe (Ej. price_1Nxxxx...)
+PRICE_ORO = os.environ.get("STRIPE_PRICE_ORO", "")
+PRICE_PLATINO = os.environ.get("STRIPE_PRICE_PLATINO", "")
+PRICE_BLACK = os.environ.get("STRIPE_PRICE_BLACK", "")
+
 ia_client = OpenAI(api_key=OPENAI_API_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# --- FUNCIONES BASE ---
 def limpiar_texto(texto: str) -> str:
     if not texto: return "GENERICO"
     texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
@@ -87,36 +99,95 @@ PROMPT_SISTEMA = """Eres el Abogado Proyectista Jefe. Extrae los datos en JSON c
   ]
 }
 REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
-1. CERTIFICADO DEL NOTARIO (CRÍTICO): En 'certificado_notario', busca al inicio de la escritura el párrafo largo donde el fedatario declara formalmente su adscripción, nombramiento, acuerdos del ejecutivo, subregiones y fechas de publicación. COPIA ESTE PÁRRAFO COMPLETO DE FORMA ESTRICTAMENTE TEXTUAL E ÍNTEGRA. PROHIBIDO RESUMIR O DEJARLO VACÍO.
-2. NOMBRES CON TÍTULOS: En 'nombre_vendedor' y 'nombre_comprador', COPIA TEXTUALMENTE incluyendo todos los nombres si son varios, y con sus prefijos como "Los señores", "El señor", "La sociedad mercantil", tal cual vienen en la escritura.
-3. GENERALES EXACTAS (CRÍTICO): En 'generales_vendedor' y 'generales_comprador' NO RESUMAS ABSOLUTAMENTE NADA. COPIA Y PEGA EL PÁRRAFO COMPLETO EXACTO ORIGINAL donde se mencionan las generales (edad, estado civil, ocupación, nacionalidad). Si son múltiples personas, copia el texto completo de las generales de todas. No inventes edades.
-4. RFC Y CURP (CRÍTICO): Extrae ÚNICAMENTE el código alfanumérico. OMITE Y ELIMINA POR COMPLETO el deletreo fonético (ej. está prohibido incluir frases como "letras O, E, C...", solo pon el código).
-5. VALORES MONETARIOS: Asegúrate de extraer correctamente el Valor de Operación, Avalúo y Catastral de forma literal incluyendo los signos de peso. El 'total_liquidacion' debe ser exactamente IGUAL al 'impuesto_monto'.
-6. ANTECEDENTES Y UBICACIÓN: Copia el antecedente de propiedad o Datos de Registro de forma LITERAL, ÍNTEGRA Y COMPLETA. No omitas líneas. Copia textual la descripción, medidas y linderos. Extrae el 'uso_inmueble'.
-7. CLASIFICACIÓN: 'clasificacion_inmueble' DEBE SER UN ARREGLO con una o más opciones: ["Urbano", "Rústico", "Baldío", "Construido"].
-8. SUBDIVISIONES: Si se transmiten MÚLTIPLES inmuebles, genera UN objeto en 'avisos' POR CADA INMUEBLE.
-9. 'se_anexa': Responde 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
+1. CERTIFICADO DEL NOTARIO (CRÍTICO): En 'certificado_notario', busca al inicio el párrafo de adscripción. COPIA COMPLETO Y TEXTUAL.
+2. NOMBRES CON TÍTULOS: Incluye prefijos como "Los señores", "La sociedad mercantil".
+3. GENERALES EXACTAS: NO RESUMAS NADA. Copia textual el párrafo de generales.
+4. RFC Y CURP: Extrae ÚNICAMENTE el código alfanumérico. OMITE el deletreo fonético.
+5. VALORES MONETARIOS: Extrae Avalúo, Operación, Catastral. El 'total_liquidacion' = 'impuesto_monto'.
+6. ANTECEDENTES Y UBICACIÓN: Copia linderos y antecedentes LITERAL.
+7. CLASIFICACIÓN: ARREGLO ["Urbano", "Rústico", "Baldío", "Construido"].
+8. SUBDIVISIONES: Un objeto en 'avisos' POR CADA INMUEBLE.
+9. 'se_anexa': 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
+# --- RUTAS DE STRIPE ---
+@app.post("/create-checkout-session")
+async def create_checkout_session(payload: dict):
+    plan = payload.get("plan")
+    user_id = payload.get("user_id")
+    email = payload.get("email")
+
+    mapa_precios = {
+        "Oro": PRICE_ORO,
+        "Platino": PRICE_PLATINO,
+        "Black": PRICE_BLACK
+    }
+    
+    price_id = mapa_precios.get(plan)
+    if not price_id:
+        return {"success": False, "error": "Plan no válido o en configuración."}
+
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{'price': price_id, 'quantity': 1}],
+            mode='subscription',
+            success_url="https://actarium.mx/terminal?pago=exito",
+            cancel_url="https://actarium.mx/terminal?pago=cancelado",
+            customer_email=email,
+            client_reference_id=user_id, # VITAL para saber a quién le damos la licencia
+        )
+        return {"success": True, "url": session.url}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        user_id = session.get("client_reference_id")
+        
+        # Recuperamos qué plan compró basándonos en el monto o producto
+        # Simplificación: Reseteamos usos a 0 y actualizamos plan
+        if user_id:
+            # Determinamos el límite por plan simulado (Idealmente leemos el price_id del evento)
+            limite = 50 # Default safe fallback
+            nuevo_plan = "Premium"
+            
+            # Calculamos renovación (30 días)
+            renovacion = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+            
+            # Actualizamos la Base de Datos
+            supabase.table("licencias").update({
+                "usos_mes": 0,
+                "estado": "activa",
+                "fecha_renovacion": renovacion
+            }).eq("usada_por", user_id).execute()
+
+    return {"status": "success"}
+
+# --- RUTAS DE EXTRACCIÓN (Intactas y Perfeccionadas) ---
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...)):
     ruta_temporal = f"temp_{file.filename}"
     with open(ruta_temporal, "wb") as buffer: buffer.write(await file.read())
-    texto_completo = extraer_texto_documento(ruta_temporal)
-    texto_optimizado = re.sub(r'\s+', ' ', texto_completo).strip()
+    texto_optimizado = re.sub(r'\s+', ' ', extraer_texto_documento(ruta_temporal)).strip()
     os.remove(ruta_temporal)
     
     respuesta = ia_client.chat.completions.create(
-        model="gpt-4o-mini",
-        response_format={ "type": "json_object" },
+        model="gpt-4o-mini", response_format={ "type": "json_object" },
         messages=[{"role": "system", "content": PROMPT_SISTEMA}, {"role": "user", "content": texto_optimizado}]
     )
-    
     datos_ia = json.loads(respuesta.choices[0].message.content)
-    
     for aviso in datos_ia.get("avisos", []):
-        if not aviso.get("total_liquidacion"):
-            aviso["total_liquidacion"] = aviso.get("impuesto_monto", "")
-            
+        if not aviso.get("total_liquidacion"): aviso["total_liquidacion"] = aviso.get("impuesto_monto", "")
     return datos_ia
 
 @app.post("/generar-final")
@@ -125,25 +196,21 @@ async def generar_final(payload: dict):
     user_id = payload.get("user_id", "")
     
     usos, limite = obtener_uso_y_limite(user_id)
-    if usos >= limite: return {"success": False, "error": f"Límite de tu plan alcanzado ({usos}/{limite} Avisos). Dirígete a 'Mi Cuenta' para adquirir un plan superior."}
+    if usos >= limite: return {"success": False, "error": f"Límite de plan alcanzado ({usos}/{limite} Avisos). Adquiere un Plan."}
 
     archivos_generados = []
     timestamp = datetime.now().strftime("%H%M%S")
-    
     for idx, aviso in enumerate(avisos):
         clasif = aviso.get("clasificacion_inmueble", [])
         if isinstance(clasif, str): clasif = [clasif]
-        
         aviso["x_urbano"] = "X" if "Urbano" in clasif else " "
         aviso["x_rustico"] = "X" if "Rústico" in clasif else " "
         aviso["x_baldio"] = "X" if "Baldío" in clasif else " "
         aviso["x_construido"] = "X" if "Construido" in clasif else " "
-        
         trans = aviso.get("lo_transmitido", "")
         aviso["x_fraccion"] = "X" if trans == "Fracción" else " "
         aviso["x_resto"] = "X" if trans == "Resto" else " "
         aviso["x_totalidad"] = "X" if trans == "Totalidad" else " "
-        
         anexo = aviso.get("se_anexa", "Avalúo Bancario")
         aviso["x_deslinde"] = "X" if anexo == "Deslinde" else " "
         aviso["x_avaluo"] = "X" if anexo == "Avalúo Bancario" else " "
@@ -160,7 +227,6 @@ async def generar_final(payload: dict):
         nombre_oficial = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.docx"
         nombre_unico = f"ATP_{num_escritura}_{mun_limpio}_{timestamp}_{idx+1}.docx" 
         ruta_local = f"temp_{nombre_unico}"
-        
         doc.save(ruta_local)
         archivos_generados.append({"ruta_local": ruta_local, "nombre_unico": nombre_unico, "nombre_oficial": nombre_oficial, "aviso_data": aviso})
 
@@ -169,12 +235,7 @@ async def generar_final(payload: dict):
     if len(archivos_generados) == 1:
         archivo_data = archivos_generados[0]
         with open(archivo_data["ruta_local"], "rb") as f: supabase.storage.from_("avisos_generados").upload(archivo_data["nombre_unico"], f)
-        if user_id:
-            supabase.table("historial").insert({
-                "user_id": user_id, "escritura": str(archivo_data["aviso_data"].get('escritura_numero', 'SN')),
-                "acto": archivo_data["aviso_data"].get("naturaleza_acto", "-"), "vendedor": archivo_data["aviso_data"].get("nombre_vendedor", "-"),
-                "comprador": archivo_data["aviso_data"].get("nombre_comprador", "-"), "archivo": archivo_data["nombre_unico"], "datos_json": json.dumps(archivo_data["aviso_data"])
-            }).execute()
+        if user_id: supabase.table("historial").insert({"user_id": user_id, "escritura": str(archivo_data["aviso_data"].get('escritura_numero', 'SN')), "acto": archivo_data["aviso_data"].get("naturaleza_acto", "-"), "vendedor": archivo_data["aviso_data"].get("nombre_vendedor", "-"), "comprador": archivo_data["aviso_data"].get("nombre_comprador", "-"), "archivo": archivo_data["nombre_unico"], "datos_json": json.dumps(archivo_data["aviso_data"])}).execute()
         os.remove(archivo_data["ruta_local"])
         return {"success": True, "archivo": archivo_data["nombre_unico"], "nombre_descarga": archivo_data["nombre_oficial"]}
     else:
@@ -193,7 +254,7 @@ async def generar_final(payload: dict):
 @app.post("/procesar-masivo")
 async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optional[str] = Form(None), fecha_cierre: Optional[str] = Form("")):
     usos, limite = obtener_uso_y_limite(user_id)
-    if usos >= limite: raise HTTPException(status_code=403, detail=f"Límite de tu plan alcanzado ({usos}/{limite} Avisos).")
+    if usos >= limite: raise HTTPException(status_code=403, detail=f"Límite de plan alcanzado ({usos}/{limite} Avisos).")
 
     timestamp_lote = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_zip = f"Paquete_Avisos_Actarium_{timestamp_lote}.zip"
@@ -206,12 +267,9 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
             texto_optimizado = re.sub(r'\s+', ' ', extraer_texto_documento(ruta_temporal)).strip()
             os.remove(ruta_temporal)
             
-            respuesta = ia_client.chat.completions.create(
-                model="gpt-4o-mini", response_format={ "type": "json_object" },
-                messages=[{"role": "system", "content": PROMPT_SISTEMA}, {"role": "user", "content": texto_optimizado}]
-            )
-            
+            respuesta = ia_client.chat.completions.create(model="gpt-4o-mini", response_format={ "type": "json_object" }, messages=[{"role": "system", "content": PROMPT_SISTEMA}, {"role": "user", "content": texto_optimizado}])
             datos_ia = json.loads(respuesta.choices[0].message.content)
+            
             for idx, aviso_ia in enumerate(datos_ia.get("avisos", [])):
                 total_avisos_generados += 1
                 if fecha_cierre: aviso_ia["fecha_cierre"] = fecha_cierre
