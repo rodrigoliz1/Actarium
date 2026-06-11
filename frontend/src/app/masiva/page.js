@@ -12,11 +12,16 @@ const supabase = createClient(
 export default function ProduccionMasiva() {
   const router = useRouter();
   const [verificandoAcceso, setVerificandoAcceso] = useState(true);
+  const [licenciaInfo, setLicenciaInfo] = useState(null);
 
   const [archivos, setArchivos] = useState([]);
   const [procesando, setProcesando] = useState(false);
   const [mensajeCarga, setMensajeCarga] = useState("Preparando lote de escrituras...");
   const [fechaGlobal, setFechaGlobal] = useState("");
+
+  // ESTADOS DE POPUPS (PAYWALL)
+  const [showNoSubPopup, setShowNoSubPopup] = useState(false);
+  const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
 
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -26,18 +31,51 @@ export default function ProduccionMasiva() {
 
     const revisarLicencia = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) router.push("/terminal");
-      else setVerificandoAcceso(false);
+      if (!session) {
+        router.push("/terminal");
+      } else {
+        await cargarDatosSuscripcion(session.user.id);
+        setVerificandoAcceso(false);
+      }
     };
     revisarLicencia();
   }, [router]);
+
+  const cargarDatosSuscripcion = async (userId) => {
+    const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).single();
+    if (data) setLicenciaInfo(data);
+    else setLicenciaInfo({ plan: 'Ninguno', usos_mes: 0, limite_mensual: 0, estado: 'inactiva' });
+  };
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
     localStorage.setItem("darkMode", !isDarkMode);
   };
 
+  // SISTEMA VIGÍA (WATCHDOG)
+  const verificarAcceso = () => {
+    const consumidos = licenciaInfo?.usos_mes || 0;
+    const limite = licenciaInfo?.limite_mensual || 0;
+    const plan = licenciaInfo?.plan || 'Ninguno';
+
+    if (plan === 'Ninguno' || licenciaInfo?.estado !== 'activa') {
+      setShowNoSubPopup(true);
+      return false;
+    }
+    if (consumidos >= limite) {
+      setShowNoCreditsPopup(true);
+      return false;
+    }
+    return true;
+  };
+
   const manejarSubida = (e) => {
+    // El muro de pago intercepta antes de agregar el documento
+    if (!verificarAcceso()) {
+      if (e.target) e.target.value = null;
+      return;
+    }
+
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
       setArchivos((prevArchivos) => {
@@ -57,6 +95,10 @@ export default function ProduccionMasiva() {
 
   const enviarAlServidorMasivo = async () => {
     if (archivos.length === 0) return;
+
+    // Doble verificación por seguridad antes de gastar procesamiento
+    if (!verificarAcceso()) return;
+
     setProcesando(true);
 
     const mensajes = ["Escaneando lote de documentos...", "Extrayendo datos de múltiples escrituras...", "Estructurando paquetes zip en la nube...", "Asignando plantillas municipales por documento..."];
@@ -100,8 +142,42 @@ export default function ProduccionMasiva() {
 
   if (verificandoAcceso) return null;
 
+  const planActual = licenciaInfo?.plan || 'Ninguno';
+  const limiteAvisos = licenciaInfo?.limite_mensual || 0;
+
   return (
     <div className={`min-h-screen ${bgApp} font-sans pb-20 relative transition-colors duration-500`}>
+
+      {/* POP UP: NO SUBSCRIPTION */}
+      {showNoSubPopup && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
+          <div className={`${bgPanel} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-[#D4AF37]/30 relative`}>
+            <button onClick={() => setShowNoSubPopup(false)} className="absolute top-4 right-4 text-gray-400 hover:text-[#D4AF37]">✕</button>
+            <div className="w-16 h-16 bg-[#0F172A] rounded-full mx-auto flex items-center justify-center text-3xl mb-4 border border-[#D4AF37]">✨</div>
+            <h2 className={`text-2xl font-serif ${textTitle} mb-2`}>¡Únete a Actarium!</h2>
+            <p className="text-sm text-gray-400 mb-6">Para generar Avisos de Transmisión Patrimonial, suscríbete a uno de nuestros planes.</p>
+            <div className="space-y-3">
+              <button onClick={() => router.push("/terminal")} className="w-full bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold tracking-widest shadow-lg hover:scale-105 transition-transform">VER PLANES</button>
+              <button onClick={() => router.push("/terminal")} className="w-full border border-gray-600 text-gray-400 py-3 rounded-xl font-bold tracking-widest text-xs uppercase hover:bg-gray-800 transition-colors hover:text-white">Tengo un código de licencia</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POP UP: NO CREDITS */}
+      {showNoCreditsPopup && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
+          <div className={`${bgPanel} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-red-500/30 relative`}>
+            <div className="w-16 h-16 bg-red-500/10 rounded-full mx-auto flex items-center justify-center text-3xl mb-4 text-red-500">⚠️</div>
+            <h2 className={`text-2xl font-serif ${textTitle} mb-2`}>Límite Agotado</h2>
+            <p className="text-sm text-gray-400 mb-6">Agotaste tu límite mensual de {limiteAvisos} avisos. Actualiza tu suscripción al plan superior para continuar generando avisos.</p>
+            <div className="space-y-3 flex gap-2">
+              <button onClick={() => setShowNoCreditsPopup(false)} className="flex-1 border border-gray-600 text-gray-400 py-3 rounded-xl font-bold text-xs uppercase hover:bg-gray-800 hover:text-white transition-colors">Rechazar</button>
+              <button onClick={() => router.push("/terminal")} className="flex-1 bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Mejorar Plan</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {procesando && (
         <div className="fixed inset-0 z-50 bg-[#0F172A]/95 backdrop-blur-md flex flex-col items-center justify-center">
