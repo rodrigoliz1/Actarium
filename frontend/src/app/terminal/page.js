@@ -27,6 +27,7 @@ function TerminalContent() {
   const [otp, setOtp] = useState("");
   const [licencia, setLicencia] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [timer, setTimer] = useState(0); // ESTADO DEL TEMPORIZADOR
 
   const [nuevaContrasena, setNuevaContrasena] = useState("");
   const [confirmarNuevaContrasena, setConfirmarNuevaContrasena] = useState("");
@@ -48,7 +49,6 @@ function TerminalContent() {
     if (pagoEstatus === "exito") alert("¡Pago procesado con éxito! Tu plan ha sido actualizado.");
     if (pagoEstatus === "cancelado") alert("El pago fue cancelado.");
 
-    // Leer parámetros de redirección desde Individual/Masiva
     const tabParam = searchParams.get("tab");
     const vistaParam = searchParams.get("vista");
     if (tabParam) setPestanaActiva(tabParam);
@@ -72,6 +72,15 @@ function TerminalContent() {
     });
     return () => subscription.unsubscribe();
   }, [searchParams]);
+
+  // LOGICA DE LA CUENTA REGRESIVA
+  useEffect(() => {
+    let interval;
+    if (vista === "otp" && timer > 0) {
+      interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [vista, timer]);
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
@@ -116,6 +125,23 @@ function TerminalContent() {
     } else {
       setAuthMsg({ text: "Código enviado a tu correo.", type: "success" });
       setVista("otp");
+      setTimer(45); // INICIA EL TEMPORIZADOR
+    }
+  };
+
+  const reenviarCodigo = async () => {
+    if (timer > 0) return;
+    setAuthMsg({ text: "Reenviando código...", type: "info" });
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+    });
+
+    if (error) {
+      setAuthMsg({ text: error.message, type: "error" });
+    } else {
+      setAuthMsg({ text: "Nuevo código enviado con éxito.", type: "success" });
+      setTimer(45); // REINICIA EL TEMPORIZADOR
     }
   };
 
@@ -134,7 +160,6 @@ function TerminalContent() {
   const validarLicencia = async (e) => {
     e.preventDefault();
     setAuthMsg({ text: "Verificando licencia en el servidor...", type: "info" });
-    // Corrección del Query
     const { data, error } = await supabase.from('licencias').select('*').eq('codigo', licencia).maybeSingle();
 
     if (error || !data) return setAuthMsg({ text: "La licencia ingresada es inválida o no existe.", type: "error" });
@@ -289,7 +314,18 @@ function TerminalContent() {
               {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{authMsg.text}</p>}
 
               <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all shadow-lg">VERIFICAR CÓDIGO</button>
-              <button type="button" onClick={() => { setVista("login"); setAuthMsg({ text: "", type: "" }); }} className="mt-4 text-xs text-gray-400 hover:text-[#0F172A]">← Cancelar</button>
+
+              <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={reenviarCodigo}
+                  disabled={timer > 0}
+                  className={`text-xs font-bold uppercase tracking-widest transition-colors ${timer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-[#D4AF37] hover:text-[#0F172A]'}`}
+                >
+                  {timer > 0 ? `Reenviar código en ${timer}s` : "¿No recibiste el código? Reenviar"}
+                </button>
+                <button type="button" onClick={() => { setVista("login"); setAuthMsg({ text: "", type: "" }); }} className="text-xs text-gray-400 hover:text-[#0F172A]">← Cancelar</button>
+              </div>
             </form>
           )}
         </div>
