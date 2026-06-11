@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-function ProduccionIndividualContent() {
+export default function ProduccionIndividual() {
   const router = useRouter();
   const [verificandoAcceso, setVerificandoAcceso] = useState(true);
   const [licenciaInfo, setLicenciaInfo] = useState(null);
@@ -228,7 +228,7 @@ function ProduccionIndividualContent() {
         {paso === 1 ? (
           <div className="text-center mt-20 max-w-3xl mx-auto animate-in fade-in">
             <h2 className={`text-4xl font-serif ${textTitle} mb-4`}>Cargar Escritura</h2>
-            <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento Word.</p>
+            <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento de Word.</p>
             <div className={`${bgPanel} border-2 border-dashed p-24 rounded-2xl relative hover:border-[#D4AF37] transition-all`}>
               <input type="file" accept=".docx,.doc,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
               <p className="text-gray-400 font-medium">Arrastre aquí el archivo .docx o .doc, o haga clic para seleccionar</p>

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-function ProduccionMasivaContent() {
+export default function ProduccionMasiva() {
   const router = useRouter();
   const [verificandoAcceso, setVerificandoAcceso] = useState(true);
   const [licenciaInfo, setLicenciaInfo] = useState(null);
@@ -244,13 +244,5 @@ function ProduccionMasivaContent() {
         )}
       </main>
     </div>
-  );
-}
-
-export default function ProduccionMasiva() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>}>
-      <ProduccionMasivaContent />
-    </Suspense>
   );
 }
