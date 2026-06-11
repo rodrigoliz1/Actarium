@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -9,7 +9,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function Terminal() {
+// --- COMPONENTE INTERNO CON LA LÓGICA CORE ---
+function TerminalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [session, setSession] = useState(null);
@@ -114,10 +115,8 @@ export default function Terminal() {
 
     if (authData.user) {
       if (licencia) {
-        // Si viene con un código manual
         await supabase.from('licencias').update({ estado: 'usada', usada_por: authData.user.id, fecha_activacion: new Date() }).eq('codigo', licencia);
       } else {
-        // Si no trae código, le damos el plan prueba por default para que compre adentro
         await supabase.from('licencias').insert({
           codigo: "FREE-" + Math.floor(Math.random() * 10000), plan: 'Prueba', limite_mensual: 3, estado: 'activa', usada_por: authData.user.id, fecha_activacion: new Date()
         });
@@ -184,7 +183,6 @@ export default function Terminal() {
   const borderBline = isDarkMode ? "border-gray-800" : "border-gray-100";
   const inputClass = isDarkMode ? "bg-[#18243E] border-gray-700 text-white focus:border-[#D4AF37]" : "bg-gray-50 border-gray-200 text-[#334155] focus:border-[#D4AF37]";
 
-  // --- PANTALLA DE ACCESO PARA NO LOGEADOS ---
   if (!session) {
     return (
       <div className="min-h-screen bg-[#0F172A] flex flex-col justify-center items-center font-sans relative overflow-hidden px-4 py-10">
@@ -200,11 +198,10 @@ export default function Terminal() {
               <form onSubmit={hacerLogin} className="space-y-4 text-left">
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white text-sm" placeholder="Correo institucional" />
                 <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white text-sm" placeholder="Contraseña" />
-                {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{authMsg.text}</p>}
+                {authMsg.text && <p className="text-xs text-center text-red-500 font-medium">{authMsg.text}</p>}
                 <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all mt-2">INGRESAR</button>
               </form>
 
-              {/* BOTONES CLAROS SOLICITADOS POR EL USUARIO */}
               <div className="mt-8 flex flex-col gap-3">
                 <button onClick={() => { setVista("formulario-registro"); setAuthMsg({ text: "", type: "" }); setLicencia(""); }} className="w-full border-2 border-gray-200 text-gray-500 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:border-[#D4AF37] hover:text-[#D4AF37] transition-all">
                   Crear Cuenta / Comprar Licencia
@@ -214,11 +211,9 @@ export default function Terminal() {
                 </button>
               </div>
 
-              {/* BOTÓN REGRESAR AL INICIO */}
               <div className="mt-8 pt-6 border-t border-gray-100">
                 <Link href="/" className="text-xs text-gray-400 hover:text-[#0F172A] flex items-center justify-center gap-2 font-medium transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                  Volver a la página principal
+                  ← Volver a la página principal
                 </Link>
               </div>
             </div>
@@ -227,10 +222,10 @@ export default function Terminal() {
           {vista === "validar-licencia" && (
             <div className="text-center animate-in slide-in-from-right-4 fade-in">
               <h2 className="text-2xl font-serif text-[#0F172A] mb-2">Activación Manual</h2>
-              <p className="text-gray-500 text-xs mb-6">Ingrese su código si adquirió su licencia por transferencia o a través de un distribuidor.</p>
+              <p className="text-gray-500 text-xs mb-6">Ingrese su código de activación.</p>
               <form onSubmit={validarLicencia} className="space-y-4">
                 <input type="text" required value={licencia} onChange={(e) => setLicencia(e.target.value.toUpperCase())} className="w-full p-4 border-2 border-gray-200 rounded-xl text-center font-mono text-lg tracking-widest outline-none focus:border-[#D4AF37]" placeholder="ACT-XXXX-XXXX" />
-                {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{authMsg.text}</p>}
+                {authMsg.text && <p className="text-xs text-center text-red-500 font-medium">{authMsg.text}</p>}
                 <button type="submit" className="w-full bg-[#0F172A] text-white py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all">VALIDAR CÓDIGO</button>
               </form>
               <button onClick={() => { setVista("login"); setAuthMsg({ text: "", type: "" }); }} className="mt-6 text-xs text-gray-400 hover:text-[#0F172A]">← Cancelar y volver al login</button>
@@ -240,14 +235,14 @@ export default function Terminal() {
           {vista === "formulario-registro" && (
             <form onSubmit={registrarCuenta} className="space-y-4 text-left animate-in slide-in-from-right-4 fade-in">
               <h2 className="text-2xl font-serif text-[#0F172A] text-center mb-1">Registro de Notaría</h2>
-              <p className="text-gray-500 text-xs mb-6 text-center">{licencia ? `Registrando la licencia: ${licencia}` : "Cree su cuenta gratuita. Podrá adquirir su plan dentro de la plataforma."}</p>
+              <p className="text-gray-500 text-xs mb-6 text-center">{licencia ? `Registrando la licencia: ${licencia}` : "Cree su cuenta gratuita."}</p>
 
               <input type="text" required value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm" placeholder="Nombre de la Notaría (Ej. Notaría No. 1)" />
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm" placeholder="Correo Administrador" />
               <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm" placeholder="Contraseña" />
               <input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm" placeholder="Confirmar Contraseña" />
 
-              {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{authMsg.text}</p>}
+              {authMsg.text && <p className="text-xs text-center text-red-500 font-medium">{authMsg.text}</p>}
 
               <button type="submit" className="w-full bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold tracking-widest hover:bg-black hover:text-white transition-all shadow-lg">FINALIZAR REGISTRO</button>
               <div className="text-center mt-4 pt-4 border-t border-gray-100">
@@ -260,7 +255,6 @@ export default function Terminal() {
     );
   }
 
-  // --- LOBBY DE USUARIO LOGEADO (Mantenido intacto) ---
   const avisosConsumidos = licenciaInfo?.usos_mes || 0;
   const limiteAvisos = licenciaInfo?.limite_mensual || 3;
   const porcentajeUso = Math.min((avisosConsumidos / limiteAvisos) * 100, 100);
@@ -291,7 +285,7 @@ export default function Terminal() {
 
           {avisosConsumidos >= limiteAvisos && (
             <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-xl flex items-center justify-between animate-pulse">
-              <p className="text-red-500 font-bold text-sm">⚠️ Has alcanzado el límite de tu plan actual ({limiteAvisos} Avisos). Tus funciones de generación están bloqueadas.</p>
+              <p className="text-red-500 font-bold text-sm">⚠️ Has alcanzado el límite de tu plan actual ({limiteAvisos} Avisos). Generación bloqueada.</p>
               <button onClick={() => setPestanaActiva("cuenta")} className="bg-red-500 text-white px-4 py-2 rounded text-xs font-bold uppercase tracking-widest">Renovar ahora</button>
             </div>
           )}
@@ -313,7 +307,7 @@ export default function Terminal() {
               <div className={`${bgCard} p-8 rounded-2xl border ${avisosConsumidos >= limiteAvisos ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#D4AF37] cursor-pointer'} transition-all duration-300 flex flex-col items-center text-center group`}>
                 <div className="w-16 h-16 bg-[#0F172A] rounded-full flex items-center justify-center mb-4 text-2xl group-hover:bg-[#D4AF37] text-[#D4AF37] group-hover:text-[#0F172A] transition-all">📂</div>
                 <h3 className={`text-xl font-serif ${textTitulo} mb-2`}>Producción Masiva</h3>
-                <p className="text-xs text-gray-400 font-light">Procesamiento por lote de alta velocidad estructurado en carpetas ZIP.</p>
+                <p className="text-xs text-gray-400 font-light">Procesamiento por lote de alta velocidad estructurado en ZIP.</p>
               </div>
             </Link>
           </div>
@@ -332,7 +326,7 @@ export default function Terminal() {
                 </thead>
                 <tbody className="divide-y divide-gray-200/10">
                   {historial.length === 0 ? (
-                    <tr><td colSpan="4" className="p-10 text-center text-gray-400 italic">No hay registros guardados en esta cuenta.</td></tr>
+                    <tr><td colSpan="4" className="p-10 text-center text-gray-400 italic">No hay registros guardados.</td></tr>
                   ) : (
                     historial.map((fila) => (
                       <tr key={fila.id} className={`${tableRowHover} transition-colors border-b ${borderBline}`}>
@@ -378,22 +372,22 @@ export default function Terminal() {
 
                 <div className="mt-6 pt-4 border-t border-gray-200/10 text-left text-xs space-y-3">
                   <div className="flex justify-between"><span className="text-gray-400">Estado:</span><span className={`font-bold uppercase ${porcentajeUso >= 100 ? 'text-red-500' : 'text-green-500'}`}>{porcentajeUso >= 100 ? 'Agotado' : 'Activo'}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-400">Vence / Renueva:</span><span className="font-medium text-gray-400">{licenciaInfo?.fecha_renovacion ? new Date(licenciaInfo.fecha_renovacion).toLocaleDateString() : "Ilimitado en prueba"}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-400">Vence:</span><span className="font-medium text-gray-400">{licenciaInfo?.fecha_renovacion ? new Date(licenciaInfo.fecha_renovacion).toLocaleDateString() : "Prueba"}</span></div>
                 </div>
               </div>
             </div>
 
             <div className="lg:col-span-2 space-y-6">
               <div className={`${bgCard} p-8 rounded-2xl border`}>
-                <h3 className={`text-xl font-serif ${textTitulo} mb-1 flex items-center gap-2`}><span>🚀</span> Mejora tu Productividad</h3>
-                <p className="text-xs text-gray-400 mb-6">Desbloquea límites superiores para tu Notaría al instante con nuestra pasarela segura.</p>
+                <h3 className={`text-xl font-serif ${textTitulo} mb-1 flex items-center gap-2`}><span>🚀</span> Mejora tu Plan</h3>
+                <p className="text-xs text-gray-400 mb-6">Desbloquea límites superiores al instante.</p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className={`border rounded-xl p-5 text-center flex flex-col justify-between transition-transform hover:scale-105 ${isDarkMode ? 'border-[#D4AF37]/30 bg-[#0F172A]' : 'border-[#D4AF37]/50 bg-[#FEFCE8]/30'}`}>
                     <div>
                       <h4 className="font-serif text-lg font-bold text-[#D4AF37]">Plan ORO</h4>
                       <p className={`text-2xl font-black my-2 ${textTitulo}`}>$999 <span className="text-[10px] font-light text-gray-500">MXN/mes</span></p>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-gray-500 border-t border-b border-gray-500/20 py-2 my-4">10 Avisos Mensuales</p>
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-gray-500 border-t border-b border-gray-500/20 py-2 my-4">10 Avisos</p>
                     </div>
                     <button onClick={() => iniciarPago("Oro")} className="w-full bg-[#0F172A] text-white text-xs py-2 rounded-lg font-bold uppercase tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-colors">Adquirir</button>
                   </div>
@@ -403,7 +397,7 @@ export default function Terminal() {
                     <div>
                       <h4 className={`font-serif text-lg font-bold ${textTitulo}`}>PLATINO</h4>
                       <p className={`text-2xl font-black my-2 ${textTitulo}`}>$1,899 <span className="text-[10px] font-light text-gray-500">MXN/mes</span></p>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-gray-500 border-t border-b border-gray-500/20 py-2 my-4">20 Avisos Mensuales</p>
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-gray-500 border-t border-b border-gray-500/20 py-2 my-4">20 Avisos</p>
                     </div>
                     <button onClick={() => iniciarPago("Platino")} className="w-full bg-[#D4AF37] text-[#0F172A] text-xs py-2 rounded-lg font-bold uppercase tracking-widest hover:bg-[#0F172A] hover:text-[#D4AF37] transition-colors">Adquirir</button>
                   </div>
@@ -412,7 +406,7 @@ export default function Terminal() {
                     <div>
                       <h4 className="font-serif text-lg font-bold text-white">BLACK</h4>
                       <p className="text-2xl font-black my-2 text-white">$3,999 <span className="text-[10px] font-light text-gray-400">MXN/mes</span></p>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-gray-400 border-t border-b border-gray-700 py-2 my-4">50 Avisos Mensuales</p>
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-gray-400 border-t border-b border-gray-700 py-2 my-4">50 Avisos</p>
                     </div>
                     <button onClick={() => iniciarPago("Black")} className="w-full bg-white text-[#0F172A] text-xs py-2 rounded-lg font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors">Adquirir</button>
                   </div>
@@ -420,8 +414,8 @@ export default function Terminal() {
               </div>
 
               <div className={`${bgCard} p-8 rounded-2xl border`}>
-                <h3 className={`text-xl font-serif ${textTitulo} mb-1`}>Seguridad de la Cuenta</h3>
-                <p className="text-xs text-gray-400 mb-6">Actualice las credenciales de acceso institucional.</p>
+                <h3 className={`text-xl font-serif ${textTitulo} mb-1`}>Seguridad</h3>
+                <p className="text-xs text-gray-400 mb-6">Actualice su contraseña.</p>
                 <form onSubmit={actualizarContrasena} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Nueva Contraseña</label><input type="password" required value={nuevaContrasena} onChange={e => setNuevaContrasena(e.target.value)} className={`w-full p-3 rounded-lg border outline-none text-sm transition-colors ${inputClass}`} placeholder="••••••••" /></div>
@@ -432,10 +426,18 @@ export default function Terminal() {
                 </form>
               </div>
             </div>
-
           </div>
         </main>
       )}
     </div>
+  );
+}
+
+// --- EL CONTENEDOR SEGURO EXPORTADO PRINCIPAL (EL ESCUDO DE SUSPENSE) ---
+export default function Terminal() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>}>
+      <TerminalContent />
+    </Suspense>
   );
 }
