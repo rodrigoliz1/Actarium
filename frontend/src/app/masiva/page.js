@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function ProduccionMasiva() {
+function ProduccionMasivaContent() {
   const router = useRouter();
   const [verificandoAcceso, setVerificandoAcceso] = useState(true);
   const [licenciaInfo, setLicenciaInfo] = useState(null);
@@ -19,7 +19,6 @@ export default function ProduccionMasiva() {
   const [mensajeCarga, setMensajeCarga] = useState("Preparando lote de escrituras...");
   const [fechaGlobal, setFechaGlobal] = useState("");
 
-  // ESTADOS DE POPUPS (PAYWALL)
   const [showNoSubPopup, setShowNoSubPopup] = useState(false);
   const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
 
@@ -42,7 +41,7 @@ export default function ProduccionMasiva() {
   }, [router]);
 
   const cargarDatosSuscripcion = async (userId) => {
-    const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).single();
+    const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).maybeSingle();
     if (data) setLicenciaInfo(data);
     else setLicenciaInfo({ plan: 'Ninguno', usos_mes: 0, limite_mensual: 0, estado: 'inactiva' });
   };
@@ -52,7 +51,6 @@ export default function ProduccionMasiva() {
     localStorage.setItem("darkMode", !isDarkMode);
   };
 
-  // SISTEMA VIGÍA (WATCHDOG)
   const verificarAcceso = () => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
@@ -70,7 +68,6 @@ export default function ProduccionMasiva() {
   };
 
   const manejarSubida = (e) => {
-    // El muro de pago intercepta antes de agregar el documento
     if (!verificarAcceso()) {
       if (e.target) e.target.value = null;
       return;
@@ -96,7 +93,6 @@ export default function ProduccionMasiva() {
   const enviarAlServidorMasivo = async () => {
     if (archivos.length === 0) return;
 
-    // Doble verificación por seguridad antes de gastar procesamiento
     if (!verificarAcceso()) return;
 
     setProcesando(true);
@@ -157,8 +153,8 @@ export default function ProduccionMasiva() {
             <h2 className={`text-2xl font-serif ${textTitle} mb-2`}>¡Únete a Actarium!</h2>
             <p className="text-sm text-gray-400 mb-6">Para generar Avisos de Transmisión Patrimonial, suscríbete a uno de nuestros planes.</p>
             <div className="space-y-3">
-              <button onClick={() => router.push("/terminal")} className="w-full bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold tracking-widest shadow-lg hover:scale-105 transition-transform">VER PLANES</button>
-              <button onClick={() => router.push("/terminal")} className="w-full border border-gray-600 text-gray-400 py-3 rounded-xl font-bold tracking-widest text-xs uppercase hover:bg-gray-800 transition-colors hover:text-white">Tengo un código de licencia</button>
+              <button onClick={() => router.push("/terminal?tab=cuenta&vista=tienda")} className="w-full bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold tracking-widest shadow-lg hover:scale-105 transition-transform">VER PLANES</button>
+              <button onClick={() => router.push("/terminal?tab=cuenta&vista=registrar-licencia")} className="w-full border border-gray-600 text-gray-400 py-3 rounded-xl font-bold tracking-widest text-xs uppercase hover:bg-gray-800 transition-colors hover:text-white">Tengo un código de licencia</button>
             </div>
           </div>
         </div>
@@ -173,7 +169,7 @@ export default function ProduccionMasiva() {
             <p className="text-sm text-gray-400 mb-6">Agotaste tu límite mensual de {limiteAvisos} avisos. Actualiza tu suscripción al plan superior para continuar generando avisos.</p>
             <div className="space-y-3 flex gap-2">
               <button onClick={() => setShowNoCreditsPopup(false)} className="flex-1 border border-gray-600 text-gray-400 py-3 rounded-xl font-bold text-xs uppercase hover:bg-gray-800 hover:text-white transition-colors">Rechazar</button>
-              <button onClick={() => router.push("/terminal")} className="flex-1 bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Mejorar Plan</button>
+              <button onClick={() => router.push("/terminal?tab=cuenta&vista=tienda")} className="flex-1 bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Mejorar Plan</button>
             </div>
           </div>
         </div>
@@ -209,9 +205,9 @@ export default function ProduccionMasiva() {
         </div>
 
         <div className={`${bgPanel} border-2 border-dashed py-10 rounded-2xl relative hover:border-[#D4AF37] transition-all text-center mb-8`}>
-          <input type="file" accept=".docx" multiple onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+          <input type="file" accept=".docx,.doc,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
           <div className="w-16 h-16 bg-[#0F172A] rounded-full flex items-center justify-center mx-auto mb-4 text-[#D4AF37]">📂</div>
-          <h3 className={`text-lg font-medium ${textTitle}`}>Haga clic aquí para agregar escrituras</h3>
+          <h3 className={`text-lg font-medium ${textTitle}`}>Haga clic aquí para agregar escrituras (.docx o .doc)</h3>
         </div>
 
         {archivos.length > 0 && (
@@ -248,5 +244,13 @@ export default function ProduccionMasiva() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function ProduccionMasiva() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>}>
+      <ProduccionMasivaContent />
+    </Suspense>
   );
 }

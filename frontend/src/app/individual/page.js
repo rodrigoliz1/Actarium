@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function ProduccionIndividual() {
+function ProduccionIndividualContent() {
   const router = useRouter();
   const [verificandoAcceso, setVerificandoAcceso] = useState(true);
   const [licenciaInfo, setLicenciaInfo] = useState(null);
@@ -20,11 +20,9 @@ export default function ProduccionIndividual() {
   const [mensajeCarga, setMensajeCarga] = useState("Iniciando análisis cognitivo...");
   const [fechaGlobal, setFechaGlobal] = useState("");
 
-  // ESTADOS DE POPUPS (PAYWALL)
   const [showNoSubPopup, setShowNoSubPopup] = useState(false);
   const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
 
-  // LECTURA GLOBAL DEL MODO OSCURO
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
@@ -54,7 +52,7 @@ export default function ProduccionIndividual() {
   }, [router]);
 
   const cargarDatosSuscripcion = async (userId) => {
-    const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).single();
+    const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).maybeSingle();
     if (data) setLicenciaInfo(data);
     else setLicenciaInfo({ plan: 'Ninguno', usos_mes: 0, limite_mensual: 0, estado: 'inactiva' });
   };
@@ -64,7 +62,6 @@ export default function ProduccionIndividual() {
     localStorage.setItem("darkMode", !isDarkMode);
   };
 
-  // SISTEMA VIGÍA (WATCHDOG)
   const verificarAcceso = () => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
@@ -84,7 +81,6 @@ export default function ProduccionIndividual() {
   const manejarSubida = async (e) => {
     if (!e.target.files[0]) return;
 
-    // El muro de pago intercepta antes de gastar recursos
     if (!verificarAcceso()) {
       e.target.value = null;
       return;
@@ -158,7 +154,6 @@ export default function ProduccionIndividual() {
     setCargando(false);
   };
 
-  // VARIABLES DE TEMA
   const bgApp = isDarkMode ? "bg-[#0A0F1D] text-gray-200" : "bg-[#FDFDFD] text-[#334155]";
   const bgPanel = isDarkMode ? "bg-[#121B30] border-gray-800" : "bg-white border-gray-200";
   const bgSection = isDarkMode ? "bg-[#18243E] border-gray-700" : "bg-gray-50 border-gray-100";
@@ -184,8 +179,8 @@ export default function ProduccionIndividual() {
             <h2 className={`text-2xl font-serif ${textTitle} mb-2`}>¡Únete a Actarium!</h2>
             <p className="text-sm text-gray-400 mb-6">Para generar Avisos de Transmisión Patrimonial, suscríbete a uno de nuestros planes.</p>
             <div className="space-y-3">
-              <button onClick={() => router.push("/terminal")} className="w-full bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold tracking-widest shadow-lg hover:scale-105 transition-transform">VER PLANES</button>
-              <button onClick={() => router.push("/terminal")} className="w-full border border-gray-600 text-gray-400 py-3 rounded-xl font-bold tracking-widest text-xs uppercase hover:bg-gray-800 transition-colors hover:text-white">Tengo un código de licencia</button>
+              <button onClick={() => router.push("/terminal?tab=cuenta&vista=tienda")} className="w-full bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold tracking-widest shadow-lg hover:scale-105 transition-transform">VER PLANES</button>
+              <button onClick={() => router.push("/terminal?tab=cuenta&vista=registrar-licencia")} className="w-full border border-gray-600 text-gray-400 py-3 rounded-xl font-bold tracking-widest text-xs uppercase hover:bg-gray-800 transition-colors hover:text-white">Tengo un código de licencia</button>
             </div>
           </div>
         </div>
@@ -200,7 +195,7 @@ export default function ProduccionIndividual() {
             <p className="text-sm text-gray-400 mb-6">Agotaste tu límite mensual de {limiteAvisos} avisos. Actualiza tu suscripción al plan superior para continuar generando avisos.</p>
             <div className="space-y-3 flex gap-2">
               <button onClick={() => setShowNoCreditsPopup(false)} className="flex-1 border border-gray-600 text-gray-400 py-3 rounded-xl font-bold text-xs uppercase hover:bg-gray-800 hover:text-white transition-colors">Rechazar</button>
-              <button onClick={() => router.push("/terminal")} className="flex-1 bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Mejorar Plan</button>
+              <button onClick={() => router.push("/terminal?tab=cuenta&vista=tienda")} className="flex-1 bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Mejorar Plan</button>
             </div>
           </div>
         </div>
@@ -233,10 +228,10 @@ export default function ProduccionIndividual() {
         {paso === 1 ? (
           <div className="text-center mt-20 max-w-3xl mx-auto animate-in fade-in">
             <h2 className={`text-4xl font-serif ${textTitle} mb-4`}>Cargar Escritura</h2>
-            <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento .docx</p>
+            <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento Word.</p>
             <div className={`${bgPanel} border-2 border-dashed p-24 rounded-2xl relative hover:border-[#D4AF37] transition-all`}>
-              <input type="file" accept=".docx" onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-              <p className="text-gray-400 font-medium">Arrastre aquí el archivo o haga clic para seleccionar</p>
+              <input type="file" accept=".docx,.doc,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+              <p className="text-gray-400 font-medium">Arrastre aquí el archivo .docx o .doc, o haga clic para seleccionar</p>
             </div>
           </div>
         ) : (

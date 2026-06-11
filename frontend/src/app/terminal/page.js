@@ -9,6 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+// --- COMPONENTE INTERNO CON LA LÓGICA CORE ---
 function TerminalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -17,9 +18,8 @@ function TerminalContent() {
   const [cargando, setCargando] = useState(true);
 
   const [pestanaActiva, setPestanaActiva] = useState("produccion");
-  const [vista, setVista] = useState("login"); // login, formulario-registro, otp, tienda, registrar-licencia
+  const [vista, setVista] = useState("login");
 
-  // States de Autenticación
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -47,6 +47,12 @@ function TerminalContent() {
     const pagoEstatus = searchParams.get("pago");
     if (pagoEstatus === "exito") alert("¡Pago procesado con éxito! Tu plan ha sido actualizado.");
     if (pagoEstatus === "cancelado") alert("El pago fue cancelado.");
+
+    // Leer parámetros de redirección desde Individual/Masiva
+    const tabParam = searchParams.get("tab");
+    const vistaParam = searchParams.get("vista");
+    if (tabParam) setPestanaActiva(tabParam);
+    if (vistaParam) setVista(vistaParam);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -78,11 +84,10 @@ function TerminalContent() {
   };
 
   const cargarDatosSuscripcion = async (userId) => {
-    const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).single();
+    const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).maybeSingle();
     if (data) {
       setLicenciaInfo(data);
     } else {
-      // Si no tiene registro, le creamos un perfil en blanco (Sin suscripción)
       setLicenciaInfo({ plan: 'Ninguno', usos_mes: 0, limite_mensual: 0, estado: 'inactiva' });
     }
   };
@@ -97,7 +102,7 @@ function TerminalContent() {
 
   const registrarCuenta = async (e) => {
     e.preventDefault();
-    setAuthMsg({ text: "Enviando código de verificación...", type: "info" });
+    setAuthMsg({ text: "Generando entorno y vinculando correo...", type: "info" });
     if (password !== confirmPassword) return setAuthMsg({ text: "Las contraseñas no coinciden.", type: "error" });
     const regexPwd = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!regexPwd.test(password)) return setAuthMsg({ text: "Mínimo 8 caracteres, una mayúscula y un número.", type: "error" });
@@ -110,7 +115,7 @@ function TerminalContent() {
       setAuthMsg({ text: error.message, type: "error" });
     } else {
       setAuthMsg({ text: "Código enviado a tu correo.", type: "success" });
-      setVista("otp"); // Mandamos a la pantalla de verificación
+      setVista("otp");
     }
   };
 
@@ -123,14 +128,14 @@ function TerminalContent() {
       setAuthMsg({ text: "Código inválido o expirado.", type: "error" });
     } else {
       setAuthMsg({ text: "¡Cuenta confirmada!", type: "success" });
-      // El onAuthStateChange detectará la sesión y lo mandará al Lobby
     }
   };
 
   const validarLicencia = async (e) => {
     e.preventDefault();
-    setAuthMsg({ text: "Verificando licencia...", type: "info" });
-    const { data, error } = await supabase.auth.from('licencias').select('*').eq('codigo', licencia).single();
+    setAuthMsg({ text: "Verificando licencia en el servidor...", type: "info" });
+    // Corrección del Query
+    const { data, error } = await supabase.from('licencias').select('*').eq('codigo', licencia).maybeSingle();
 
     if (error || !data) return setAuthMsg({ text: "La licencia ingresada es inválida o no existe.", type: "error" });
     if (data.estado === 'usada') return setAuthMsg({ text: "Esta licencia ya fue registrada.", type: "error" });
@@ -159,7 +164,6 @@ function TerminalContent() {
     }
   };
 
-  // --- CONTROL DE ACCESO (POP UPS) ---
   const verificarAcceso = (callback) => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
@@ -206,9 +210,16 @@ function TerminalContent() {
   const borderBline = isDarkMode ? "border-gray-800" : "border-gray-100";
   const inputClass = isDarkMode ? "bg-[#18243E] border-gray-700 text-white focus:border-[#D4AF37]" : "bg-gray-50 border-gray-200 text-[#334155] focus:border-[#D4AF37]";
 
+  // Iconos SVG para Contraseña
+  const EyeIcon = () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+  );
+  const EyeSlashIcon = () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.978 9.978 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+  );
+
   if (cargando) return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>;
 
-  // --- PANTALLAS DE AUTENTICACIÓN (LOG OUT) ---
   if (!session) {
     return (
       <div className="min-h-screen bg-[#0F172A] flex flex-col justify-center items-center font-sans relative overflow-hidden px-4 py-10">
@@ -216,7 +227,6 @@ function TerminalContent() {
         <div className="z-10 w-full max-w-md bg-white/95 p-8 sm:p-10 rounded-[2rem] shadow-2xl border border-white/20 text-[#334155]">
           <div className="flex justify-center mb-6"><img src="/logo.png" alt="Logo" className="w-20 h-20 object-contain" /></div>
 
-          {/* LOGIN */}
           {vista === "login" && (
             <div className="text-center animate-in fade-in">
               <h1 className="text-3xl font-serif tracking-widest text-[#0F172A] mb-1">ACTARIUM</h1>
@@ -225,9 +235,9 @@ function TerminalContent() {
               <form onSubmit={hacerLogin} className="space-y-4 text-left">
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white text-sm" placeholder="Correo institucional" />
                 <div className="relative">
-                  <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white text-sm" placeholder="Contraseña" />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-4 text-gray-400 hover:text-[#D4AF37]">
-                    {showPassword ? "👁️" : "🙈"}
+                  <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] bg-white text-sm pr-12" placeholder="Contraseña" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#D4AF37] transition-colors">
+                    {showPassword ? <EyeIcon /> : <EyeSlashIcon />}
                   </button>
                 </div>
                 {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{authMsg.text}</p>}
@@ -245,7 +255,6 @@ function TerminalContent() {
             </div>
           )}
 
-          {/* REGISTRO */}
           {vista === "formulario-registro" && (
             <form onSubmit={registrarCuenta} className="space-y-4 text-left animate-in slide-in-from-right-4 fade-in">
               <h2 className="text-2xl font-serif text-[#0F172A] text-center mb-1">Registro de Notaría</h2>
@@ -255,9 +264,9 @@ function TerminalContent() {
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#D4AF37]" placeholder="Correo Administrador" />
 
               <div className="relative">
-                <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#D4AF37]" placeholder="Contraseña" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3 text-gray-400">
-                  {showPassword ? "👁️" : "🙈"}
+                <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#D4AF37] pr-10" placeholder="Contraseña" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#D4AF37] transition-colors">
+                  {showPassword ? <EyeIcon /> : <EyeSlashIcon />}
                 </button>
               </div>
               <input type={showPassword ? "text" : "password"} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#D4AF37]" placeholder="Confirmar Contraseña" />
@@ -271,7 +280,6 @@ function TerminalContent() {
             </form>
           )}
 
-          {/* OTP VERIFICACIÓN */}
           {vista === "otp" && (
             <form onSubmit={verificarOTP} className="space-y-4 text-center animate-in slide-in-from-right-4 fade-in">
               <h2 className="text-2xl font-serif text-[#0F172A] mb-2">Verifica tu Correo</h2>
@@ -289,7 +297,6 @@ function TerminalContent() {
     );
   }
 
-  // --- LOBBY DE USUARIO LOGEADO ---
   const avisosConsumidos = licenciaInfo?.usos_mes || 0;
   const limiteAvisos = licenciaInfo?.limite_mensual || 0;
   const porcentajeUso = limiteAvisos === 0 ? 100 : Math.min((avisosConsumidos / limiteAvisos) * 100, 100);
@@ -357,7 +364,6 @@ function TerminalContent() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
-            {/* Los botones navegan libremente, el bloqueo sucede al dar clic en generar dentro de esas páginas */}
             <Link href="/individual">
               <div className={`${bgCard} p-8 rounded-2xl border hover:border-[#D4AF37] transition-all duration-300 flex flex-col items-center text-center group cursor-pointer shadow-lg`}>
                 <div className="w-16 h-16 bg-[#0F172A] rounded-full flex items-center justify-center mb-4 text-2xl group-hover:bg-[#D4AF37] text-[#D4AF37] group-hover:text-[#0F172A] transition-all">📄</div>
@@ -411,11 +417,7 @@ function TerminalContent() {
 
       {pestanaActiva === "cuenta" && (
         <main className="max-w-5xl mx-auto mt-12 px-6 animate-in slide-in-from-bottom-4 duration-300">
-
-          {/* MENU LATERAL Y CONTENIDO DE LA TIENDA */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-
-            {/* SIDEBAR DE MI CUENTA */}
             <div className="lg:col-span-1 space-y-4">
               <div className={`${bgCard} p-6 rounded-2xl border text-center shadow-lg relative overflow-hidden`}>
                 <div className="absolute top-0 right-0 bg-[#0F172A] text-[#D4AF37] font-black uppercase tracking-widest text-[9px] px-3 py-1 rounded-bl-xl">
@@ -439,10 +441,7 @@ function TerminalContent() {
               </div>
             </div>
 
-            {/* CONTENIDO DINÁMICO */}
             <div className="lg:col-span-3">
-
-              {/* LA TIENDA */}
               {vista === "tienda" && (
                 <div className={`${bgCard} p-8 rounded-2xl border shadow-xl animate-in fade-in`}>
                   <div className="flex justify-between items-end mb-8">
@@ -487,7 +486,6 @@ function TerminalContent() {
                 </div>
               )}
 
-              {/* REGISTRAR LICENCIA */}
               {vista === "registrar-licencia" && (
                 <div className={`${bgCard} p-10 rounded-2xl border shadow-xl animate-in slide-in-from-right-4 fade-in max-w-lg mx-auto`}>
                   <div className="text-center mb-8">
@@ -504,7 +502,6 @@ function TerminalContent() {
                 </div>
               )}
 
-              {/* SEGURIDAD */}
               {vista === "seguridad" && (
                 <div className={`${bgCard} p-10 rounded-2xl border shadow-xl animate-in slide-in-from-right-4 fade-in max-w-lg mx-auto`}>
                   <h3 className={`text-xl font-serif ${textTitulo} mb-1`}>Seguridad de la Cuenta</h3>
