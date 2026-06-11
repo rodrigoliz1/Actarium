@@ -9,7 +9,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// --- COMPONENTE INTERNO CON LA LÓGICA CORE ---
 function TerminalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -27,17 +26,19 @@ function TerminalContent() {
   const [otp, setOtp] = useState("");
   const [licencia, setLicencia] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [timer, setTimer] = useState(0); // ESTADO DEL TEMPORIZADOR
+  const [timer, setTimer] = useState(0);
 
+  // SEGURIDAD
+  const [nuevoCorreo, setNuevoCorreo] = useState("");
   const [nuevaContrasena, setNuevaContrasena] = useState("");
   const [confirmarNuevaContrasena, setConfirmarNuevaContrasena] = useState("");
   const [pwdMsg, setPwdMsg] = useState({ text: "", type: "" });
+  const [mailMsg, setMailMsg] = useState({ text: "", type: "" });
 
   const [licenciaInfo, setLicenciaInfo] = useState(null);
   const [authMsg, setAuthMsg] = useState({ text: "", type: "" });
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // States para Popups Elegantes
   const [showNoSubPopup, setShowNoSubPopup] = useState(false);
   const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
 
@@ -73,12 +74,9 @@ function TerminalContent() {
     return () => subscription.unsubscribe();
   }, [searchParams]);
 
-  // LOGICA DE LA CUENTA REGRESIVA
   useEffect(() => {
     let interval;
-    if (vista === "otp" && timer > 0) {
-      interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
-    }
+    if (vista === "otp" && timer > 0) interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
     return () => clearInterval(interval);
   }, [vista, timer]);
 
@@ -94,11 +92,8 @@ function TerminalContent() {
 
   const cargarDatosSuscripcion = async (userId) => {
     const { data } = await supabase.from('licencias').select('*').eq('usada_por', userId).maybeSingle();
-    if (data) {
-      setLicenciaInfo(data);
-    } else {
-      setLicenciaInfo({ plan: 'Ninguno', usos_mes: 0, limite_mensual: 0, estado: 'inactiva' });
-    }
+    if (data) setLicenciaInfo(data);
+    else setLicenciaInfo({ plan: 'Ninguno', usos_mes: 0, limite_mensual: 0, estado: 'inactiva' });
   };
 
   const hacerLogin = async (e) => {
@@ -116,52 +111,31 @@ function TerminalContent() {
     const regexPwd = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!regexPwd.test(password)) return setAuthMsg({ text: "Mínimo 8 caracteres, una mayúscula y un número.", type: "error" });
 
-    const { error } = await supabase.auth.signUp({
-      email, password, options: { data: { nombre_notaria: nombre } }
-    });
-
-    if (error) {
-      setAuthMsg({ text: error.message, type: "error" });
-    } else {
-      setAuthMsg({ text: "Código enviado a tu correo.", type: "success" });
-      setVista("otp");
-      setTimer(45); // INICIA EL TEMPORIZADOR
-    }
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { nombre_notaria: nombre } } });
+    if (error) setAuthMsg({ text: error.message, type: "error" });
+    else { setAuthMsg({ text: "Código enviado a tu correo.", type: "success" }); setVista("otp"); setTimer(45); }
   };
 
   const reenviarCodigo = async () => {
     if (timer > 0) return;
     setAuthMsg({ text: "Reenviando código...", type: "info" });
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: email,
-    });
-
-    if (error) {
-      setAuthMsg({ text: error.message, type: "error" });
-    } else {
-      setAuthMsg({ text: "Nuevo código enviado con éxito.", type: "success" });
-      setTimer(45); // REINICIA EL TEMPORIZADOR
-    }
+    const { error } = await supabase.auth.resend({ type: 'signup', email: email });
+    if (error) setAuthMsg({ text: error.message, type: "error" });
+    else { setAuthMsg({ text: "Nuevo código enviado con éxito.", type: "success" }); setTimer(45); }
   };
 
   const verificarOTP = async (e) => {
     e.preventDefault();
     setAuthMsg({ text: "Verificando código...", type: "info" });
     const { data, error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'signup' });
-
-    if (error) {
-      setAuthMsg({ text: "Código inválido o expirado.", type: "error" });
-    } else {
-      setAuthMsg({ text: "¡Cuenta confirmada!", type: "success" });
-    }
+    if (error) setAuthMsg({ text: "Código inválido o expirado.", type: "error" });
+    else setAuthMsg({ text: "¡Cuenta confirmada!", type: "success" });
   };
 
   const validarLicencia = async (e) => {
     e.preventDefault();
     setAuthMsg({ text: "Verificando licencia en el servidor...", type: "info" });
     const { data, error } = await supabase.from('licencias').select('*').eq('codigo', licencia).maybeSingle();
-
     if (error || !data) return setAuthMsg({ text: "La licencia ingresada es inválida o no existe.", type: "error" });
     if (data.estado === 'usada') return setAuthMsg({ text: "Esta licencia ya fue registrada.", type: "error" });
 
@@ -183,11 +157,33 @@ function TerminalContent() {
     } catch (e) { alert("Error conectando con la pasarela financiera."); }
   };
 
-  const cancelarSuscripcion = () => {
-    if (confirm("¿Estás seguro de que deseas cancelar tu suscripción? Perderás acceso a tus beneficios al finalizar el periodo actual.")) {
-      alert("Solicitud de cancelación recibida. (Integración con Stripe Portal pendiente)");
+  // ----- FUNCIONES DE SEGURIDAD INTERNA -----
+  const actualizarContrasena = async (e) => {
+    e.preventDefault();
+    setPwdMsg({ text: "Actualizando contraseña...", type: "info" });
+    if (nuevaContrasena !== confirmarNuevaContrasena) return setPwdMsg({ text: "Las contraseñas no coinciden.", type: "error" });
+    const regexPwd = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!regexPwd.test(nuevaContrasena)) return setPwdMsg({ text: "Debe cumplir con: 8+ caracteres, 1 mayúscula y 1 número.", type: "error" });
+
+    const { error } = await supabase.auth.updateUser({ password: nuevaContrasena });
+    if (error) setPwdMsg({ text: error.message, type: "error" });
+    else {
+      setPwdMsg({ text: "¡Contraseña actualizada con éxito!", type: "success" });
+      setNuevaContrasena(""); setConfirmarNuevaContrasena("");
     }
   };
+
+  const solicitarCambioCorreo = async (e) => {
+    e.preventDefault();
+    setMailMsg({ text: "Solicitando cambio...", type: "info" });
+    if (!nuevoCorreo) return setMailMsg({ text: "Ingresa el nuevo correo.", type: "error" });
+
+    // Supabase enviará un OTP al correo actual Y al nuevo correo. El usuario debe verificar ambos.
+    const { error } = await supabase.auth.updateUser({ email: nuevoCorreo });
+    if (error) setMailMsg({ text: error.message, type: "error" });
+    else setMailMsg({ text: "Se ha enviado un enlace de confirmación a ambos correos. Por favor, revísalos para aplicar el cambio.", type: "success" });
+  };
+  // ------------------------------------------
 
   const verificarAcceso = (callback) => {
     const consumidos = licenciaInfo?.usos_mes || 0;
@@ -198,7 +194,7 @@ function TerminalContent() {
       setShowNoSubPopup(true);
       return false;
     }
-    if (consumidos >= limite) {
+    if (consumidos >= limite && limite > 0) {
       setShowNoCreditsPopup(true);
       return false;
     }
@@ -235,13 +231,8 @@ function TerminalContent() {
   const borderBline = isDarkMode ? "border-gray-800" : "border-gray-100";
   const inputClass = isDarkMode ? "bg-[#18243E] border-gray-700 text-white focus:border-[#D4AF37]" : "bg-gray-50 border-gray-200 text-[#334155] focus:border-[#D4AF37]";
 
-  // Iconos SVG para Contraseña
-  const EyeIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-  );
-  const EyeSlashIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.978 9.978 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-  );
+  const EyeIcon = () => (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>);
+  const EyeSlashIcon = () => (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.978 9.978 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>);
 
   if (cargando) return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>;
 
@@ -310,26 +301,13 @@ function TerminalContent() {
               <h2 className="text-2xl font-serif text-[#0F172A] mb-2">Verifica tu Correo</h2>
               <p className="text-gray-500 text-xs mb-6">Hemos enviado un código de seguridad a <b>{email}</b>. Ingrésalo para activar tu bóveda.</p>
 
-              <input
-                type="text"
-                required
-                maxLength="8"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                className="w-full p-4 border-2 border-gray-200 rounded-xl text-center font-mono text-2xl tracking-[0.4em] outline-none focus:border-[#D4AF37]"
-                placeholder="00000000"
-              />
+              <input type="text" required maxLength="8" value={otp} onChange={(e) => setOtp(e.target.value)} className="w-full p-4 border-2 border-gray-200 rounded-xl text-center font-mono text-2xl tracking-[0.4em] outline-none focus:border-[#D4AF37]" placeholder="00000000" />
               {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{authMsg.text}</p>}
 
               <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all shadow-lg">VERIFICAR CÓDIGO</button>
 
               <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={reenviarCodigo}
-                  disabled={timer > 0}
-                  className={`text-xs font-bold uppercase tracking-widest transition-colors ${timer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-[#D4AF37] hover:text-[#0F172A]'}`}
-                >
+                <button type="button" onClick={reenviarCodigo} disabled={timer > 0} className={`text-xs font-bold uppercase tracking-widest transition-colors ${timer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-[#D4AF37] hover:text-[#0F172A]'}`}>
                   {timer > 0 ? `Reenviar código en ${timer}s` : "¿No recibiste el código? Reenviar"}
                 </button>
                 <button type="button" onClick={() => { setVista("login"); setAuthMsg({ text: "", type: "" }); }} className="text-xs text-gray-400 hover:text-[#0F172A]">← Cancelar</button>
@@ -349,7 +327,7 @@ function TerminalContent() {
   return (
     <div className={`min-h-screen ${bgPrincipal} ${textPrincipal} font-sans pb-20 transition-colors duration-500 relative`}>
 
-      {/* GLOBAL POP UP: NO SUBSCRIPTION */}
+      {/* POP UPS GLOBALES */}
       {showNoSubPopup && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
           <div className={`${bgCard} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-[#D4AF37]/30 relative`}>
@@ -365,7 +343,6 @@ function TerminalContent() {
         </div>
       )}
 
-      {/* GLOBAL POP UP: NO CREDITS */}
       {showNoCreditsPopup && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
           <div className={`${bgCard} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-red-500/30 relative`}>
@@ -547,15 +524,48 @@ function TerminalContent() {
               )}
 
               {vista === "seguridad" && (
-                <div className={`${bgCard} p-10 rounded-2xl border shadow-xl animate-in slide-in-from-right-4 fade-in max-w-lg mx-auto`}>
-                  <h3 className={`text-xl font-serif ${textTitulo} mb-1`}>Seguridad de la Cuenta</h3>
-                  <p className="text-xs text-gray-400 mb-6">Actualice las credenciales de acceso institucional.</p>
-                  <form onSubmit={actualizarContrasena} className="space-y-4">
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Nueva Contraseña</label><input type="password" required value={nuevaContrasena} onChange={e => setNuevaContrasena(e.target.value)} className={`w-full p-3 rounded-lg border outline-none text-sm transition-colors ${inputClass}`} placeholder="••••••••" /></div>
-                    <div><label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Confirmar Contraseña</label><input type="password" required value={confirmarNuevaContrasena} onChange={e => setConfirmarNuevaContrasena(e.target.value)} className={`w-full p-3 rounded-lg border outline-none text-sm transition-colors ${inputClass}`} placeholder="••••••••" /></div>
-                    {pwdMsg.text && <p className={`text-xs p-2.5 rounded font-medium text-center ${pwdMsg.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>{pwdMsg.text}</p>}
-                    <div className="flex justify-end pt-4"><button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-colors shadow-md">Guardar Cambios</button></div>
-                  </form>
+                <div className={`${bgCard} p-8 md:p-10 rounded-2xl border shadow-xl animate-in slide-in-from-right-4 fade-in`}>
+                  <h3 className={`text-2xl font-serif ${textTitulo} mb-1`}>Centro de Seguridad</h3>
+                  <p className="text-xs text-gray-400 mb-8 border-b border-gray-700/30 pb-4">Gestione el correo corporativo y la clave maestra de su bóveda notarial.</p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                    {/* PANEL DE CORREO INSTITUCIONAL */}
+                    <div>
+                      <h4 className="text-xs font-bold text-[#D4AF37] uppercase tracking-widest mb-4">Correo Institucional</h4>
+                      <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">Su cuenta actual está vinculada a <b>{session.user.email}</b>. Para cambiarlo, enviaremos un código de seguridad a la nueva dirección.</p>
+                      <form onSubmit={solicitarCambioCorreo} className="space-y-4">
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Nuevo Correo</label>
+                          <input type="email" required value={nuevoCorreo} onChange={e => setNuevoCorreo(e.target.value)} className={`w-full p-3 rounded-lg border outline-none text-sm transition-colors ${inputClass}`} placeholder="nuevo.correo@notaria.com" />
+                        </div>
+                        {mailMsg.text && <p className={`text-[10px] p-2.5 rounded font-medium text-center ${mailMsg.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>{mailMsg.text}</p>}
+                        <button type="submit" className="w-full bg-transparent border border-gray-500 text-gray-400 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-[#D4AF37] hover:border-[#D4AF37] hover:text-[#0F172A] transition-colors">Solicitar Cambio de Correo</button>
+                      </form>
+                    </div>
+
+                    {/* PANEL DE CONTRASEÑA */}
+                    <div>
+                      <h4 className="text-xs font-bold text-[#D4AF37] uppercase tracking-widest mb-4">Actualizar Contraseña</h4>
+                      <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">La contraseña de su bóveda debe contener mínimo 8 caracteres, una mayúscula y un número por protocolo de seguridad.</p>
+                      <form onSubmit={actualizarContrasena} className="space-y-4">
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Nueva Contraseña</label>
+                          <div className="relative">
+                            <input type={showPassword ? "text" : "password"} required value={nuevaContrasena} onChange={e => setNuevaContrasena(e.target.value)} className={`w-full p-3 rounded-lg border outline-none text-sm transition-colors pr-10 ${inputClass}`} placeholder="••••••••" />
+                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#D4AF37]">
+                              {showPassword ? <EyeIcon /> : <EyeSlashIcon />}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Confirmar Contraseña</label>
+                          <input type={showPassword ? "text" : "password"} required value={confirmarNuevaContrasena} onChange={e => setConfirmarNuevaContrasena(e.target.value)} className={`w-full p-3 rounded-lg border outline-none text-sm transition-colors ${inputClass}`} placeholder="••••••••" />
+                        </div>
+                        {pwdMsg.text && <p className={`text-[10px] p-2.5 rounded font-medium text-center ${pwdMsg.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>{pwdMsg.text}</p>}
+                        <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-colors shadow-lg">Actualizar Contraseña</button>
+                      </form>
+                    </div>
+                  </div>
                 </div>
               )}
 
