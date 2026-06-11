@@ -30,11 +30,11 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
-# --- LLAVES DE STRIPE (Las pondrás en Render más tarde) ---
+# --- LLAVES DE STRIPE ---
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
-# IDs de los precios en Stripe (Ej. price_1Nxxxx...)
+# IDs de los precios en Stripe
 PRICE_ORO = os.environ.get("STRIPE_PRICE_ORO", "")
 PRICE_PLATINO = os.environ.get("STRIPE_PRICE_PLATINO", "")
 PRICE_BLACK = os.environ.get("STRIPE_PRICE_BLACK", "")
@@ -134,7 +134,7 @@ async def create_checkout_session(payload: dict):
             success_url="https://actarium.mx/terminal?pago=exito",
             cancel_url="https://actarium.mx/terminal?pago=cancelado",
             customer_email=email,
-            client_reference_id=user_id, # VITAL para saber a quién le damos la licencia
+            client_reference_id=user_id,
         )
         return {"success": True, "url": session.url}
     except Exception as e:
@@ -154,17 +154,8 @@ async def stripe_webhook(request: Request):
         session = event["data"]["object"]
         user_id = session.get("client_reference_id")
         
-        # Recuperamos qué plan compró basándonos en el monto o producto
-        # Simplificación: Reseteamos usos a 0 y actualizamos plan
         if user_id:
-            # Determinamos el límite por plan simulado (Idealmente leemos el price_id del evento)
-            limite = 50 # Default safe fallback
-            nuevo_plan = "Premium"
-            
-            # Calculamos renovación (30 días)
             renovacion = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-            
-            # Actualizamos la Base de Datos
             supabase.table("licencias").update({
                 "usos_mes": 0,
                 "estado": "activa",
@@ -173,9 +164,16 @@ async def stripe_webhook(request: Request):
 
     return {"status": "success"}
 
-# --- RUTAS DE EXTRACCIÓN (Intactas y Perfeccionadas) ---
+# --- RUTAS DE EXTRACCIÓN Y GENERACIÓN (NUEVA LÓGICA DE CRÉDITOS) ---
 @app.post("/extraer-datos")
-async def extraer_datos(file: UploadFile = File(...)):
+async def extraer_datos(file: UploadFile = File(...), user_id: Optional[str] = Form(None)):
+    # 1. VERIFICACIÓN Y COBRO ANTES DE USAR LA INTELIGENCIA ARTIFICIAL
+    if user_id:
+        usos, limite = obtener_uso_y_limite(user_id)
+        if usos >= limite:
+            return {"error": f"Límite de plan alcanzado ({usos}/{limite} Avisos). Adquiere o mejora tu plan."}
+
+    # 2. EXTRACCIÓN
     ruta_temporal = f"temp_{file.filename}"
     with open(ruta_temporal, "wb") as buffer: buffer.write(await file.read())
     texto_optimizado = re.sub(r'\s+', ' ', extraer_texto_documento(ruta_temporal)).strip()
@@ -188,6 +186,11 @@ async def extraer_datos(file: UploadFile = File(...)):
     datos_ia = json.loads(respuesta.choices[0].message.content)
     for aviso in datos_ia.get("avisos", []):
         if not aviso.get("total_liquidacion"): aviso["total_liquidacion"] = aviso.get("impuesto_monto", "")
+
+    # 3. SE CONSUME EL CRÉDITO
+    if user_id:
+        actualizar_uso(user_id, usos, 1)
+
     return datos_ia
 
 @app.post("/generar-final")
@@ -195,9 +198,7 @@ async def generar_final(payload: dict):
     avisos = payload.get("avisos", [])
     user_id = payload.get("user_id", "")
     
-    usos, limite = obtener_uso_y_limite(user_id)
-    if usos >= limite: return {"success": False, "error": f"Límite de plan alcanzado ({usos}/{limite} Avisos). Adquiere un Plan."}
-
+    # ¡LA GENERACIÓN AHORA ES LIBRE Y NO COBRA CRÉDITOS!
     archivos_generados = []
     timestamp = datetime.now().strftime("%H%M%S")
     for idx, aviso in enumerate(avisos):
@@ -230,8 +231,6 @@ async def generar_final(payload: dict):
         doc.save(ruta_local)
         archivos_generados.append({"ruta_local": ruta_local, "nombre_unico": nombre_unico, "nombre_oficial": nombre_oficial, "aviso_data": aviso})
 
-    actualizar_uso(user_id, usos, len(archivos_generados))
-
     if len(archivos_generados) == 1:
         archivo_data = archivos_generados[0]
         with open(archivo_data["ruta_local"], "rb") as f: supabase.storage.from_("avisos_generados").upload(archivo_data["nombre_unico"], f)
@@ -253,8 +252,10 @@ async def generar_final(payload: dict):
 
 @app.post("/procesar-masivo")
 async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optional[str] = Form(None), fecha_cierre: Optional[str] = Form("")):
-    usos, limite = obtener_uso_y_limite(user_id)
-    if usos >= limite: raise HTTPException(status_code=403, detail=f"Límite de plan alcanzado ({usos}/{limite} Avisos).")
+    # 1. VERIFICACIÓN Y COBRO ANTES DE USAR LA INTELIGENCIA ARTIFICIAL EN LOTE
+    if user_id:
+        usos, limite = obtener_uso_y_limite(user_id)
+        if usos >= limite: raise HTTPException(status_code=403, detail=f"Límite de plan alcanzado ({usos}/{limite} Avisos). Adquiere o mejora tu plan.")
 
     timestamp_lote = datetime.now().strftime("%Y%m%d_%H%M%S")
     nombre_zip = f"Paquete_Avisos_Actarium_{timestamp_lote}.zip"
@@ -301,7 +302,7 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 doc.render(aviso_ia)
                 
                 num_escritura = limpiar_nombre_archivo(aviso_ia.get('escritura_numero', 'SN'))
-                nombre_limpio = limpiar_nombre_archivo(archivo.filename.replace(".docx", ""))
+                nombre_limpio = limpiar_nombre_archivo(archivo.filename.replace(".docx", "").replace(".doc", ""))
                 nombre_archivo_final = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.docx" if len(datos_ia.get("avisos", [])) > 1 else f"ATP_{num_escritura}_{mun_limpio}.docx"
                 
                 nombre_unico_nube = f"ATP_{num_escritura}_{mun_limpio}_{datetime.now().strftime('%H%M%S')}_{idx+1}.docx"
@@ -313,5 +314,6 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 zipf.write(ruta_local, arcname=f"{mun_limpio}/{nombre_limpio}/{nombre_archivo_final}")
                 os.remove(ruta_local)
 
+    # SE COBRAN LOS CRÉDITOS MASIVOS AL FINALIZAR
     if user_id and total_avisos_generados > 0: actualizar_uso(user_id, usos, total_avisos_generados)
     return FileResponse(nombre_zip, filename=nombre_zip, media_type="application/zip")

@@ -60,7 +60,7 @@ export default function ProduccionMasiva() {
       setShowNoSubPopup(true);
       return false;
     }
-    if (consumidos >= limite) {
+    if (consumidos >= limite && limite > 0) {
       setShowNoCreditsPopup(true);
       return false;
     }
@@ -94,6 +94,9 @@ export default function ProduccionMasiva() {
     if (archivos.length === 0) return;
 
     if (!verificarAcceso()) return;
+
+    const confirmacion = window.confirm(`¿Deseas procesar estas ${archivos.length} escrituras de forma masiva?\n\nEsto consumirá ${archivos.length} avisos de tu límite mensual.`);
+    if (!confirmacion) return;
 
     setProcesando(true);
 

@@ -28,7 +28,6 @@ function TerminalContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [timer, setTimer] = useState(0);
 
-  // SEGURIDAD
   const [nuevoCorreo, setNuevoCorreo] = useState("");
   const [nuevaContrasena, setNuevaContrasena] = useState("");
   const [confirmarNuevaContrasena, setConfirmarNuevaContrasena] = useState("");
@@ -157,7 +156,12 @@ function TerminalContent() {
     } catch (e) { alert("Error conectando con la pasarela financiera."); }
   };
 
-  // ----- FUNCIONES DE SEGURIDAD INTERNA -----
+  const cancelarSuscripcion = () => {
+    if (confirm("¿Estás seguro de que deseas cancelar tu suscripción? Perderás acceso a tus beneficios al finalizar el periodo actual.")) {
+      alert("Solicitud de cancelación recibida. (Integración con Stripe Portal pendiente)");
+    }
+  };
+
   const actualizarContrasena = async (e) => {
     e.preventDefault();
     setPwdMsg({ text: "Actualizando contraseña...", type: "info" });
@@ -178,13 +182,12 @@ function TerminalContent() {
     setMailMsg({ text: "Solicitando cambio...", type: "info" });
     if (!nuevoCorreo) return setMailMsg({ text: "Ingresa el nuevo correo.", type: "error" });
 
-    // Supabase enviará un OTP al correo actual Y al nuevo correo. El usuario debe verificar ambos.
     const { error } = await supabase.auth.updateUser({ email: nuevoCorreo });
     if (error) setMailMsg({ text: error.message, type: "error" });
     else setMailMsg({ text: "Se ha enviado un enlace de confirmación a ambos correos. Por favor, revísalos para aplicar el cambio.", type: "success" });
   };
-  // ------------------------------------------
 
+  // Esta función ahora SÓLO restringe la recarga, pero permite que editar/descargar pasen de largo.
   const verificarAcceso = (callback) => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
@@ -203,23 +206,19 @@ function TerminalContent() {
   };
 
   const descargarArchivo = async (nombreArchivo) => {
-    verificarAcceso(async () => {
-      if (!nombreArchivo) return alert("Sin archivo adjunto.");
-      const { data, error } = await supabase.storage.from('avisos_generados').download(nombreArchivo);
-      if (!error) {
-        const url = window.URL.createObjectURL(data);
-        const a = document.createElement("a");
-        a.href = url; a.download = nombreArchivo; a.click();
-      } else alert("Error al descargar archivo.");
-    });
+    if (!nombreArchivo) return alert("Sin archivo adjunto.");
+    const { data, error } = await supabase.storage.from('avisos_generados').download(nombreArchivo);
+    if (!error) {
+      const url = window.URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url; a.download = nombreArchivo; a.click();
+    } else alert("Error al descargar archivo.");
   };
 
   const reEditar = (datosJsonStr) => {
-    verificarAcceso(() => {
-      if (!datosJsonStr) return alert("No hay datos guardados para este aviso.");
-      localStorage.setItem("aviso_editar", datosJsonStr);
-      router.push("/individual");
-    });
+    if (!datosJsonStr) return alert("No hay datos guardados para este aviso.");
+    localStorage.setItem("aviso_editar", datosJsonStr);
+    router.push("/individual");
   };
 
   const bgPrincipal = isDarkMode ? "bg-[#0A0F1D]" : "bg-[#FAFAFA]";
@@ -532,7 +531,7 @@ function TerminalContent() {
                     {/* PANEL DE CORREO INSTITUCIONAL */}
                     <div>
                       <h4 className="text-xs font-bold text-[#D4AF37] uppercase tracking-widest mb-4">Correo Institucional</h4>
-                      <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">Su cuenta actual está vinculada a <b>{session.user.email}</b>. Para cambiarlo, enviaremos un código de seguridad a la nueva dirección.</p>
+                      <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">Su cuenta actual está vinculada a <b>{session?.user?.email}</b>. Para cambiarlo, enviaremos un código de seguridad a la nueva dirección.</p>
                       <form onSubmit={solicitarCambioCorreo} className="space-y-4">
                         <div>
                           <label className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1.5 block">Nuevo Correo</label>

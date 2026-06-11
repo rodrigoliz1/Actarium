@@ -11,6 +11,7 @@ const supabase = createClient(
 
 export default function ProduccionIndividual() {
   const router = useRouter();
+  const [session, setSession] = useState(null);
   const [verificandoAcceso, setVerificandoAcceso] = useState(true);
   const [licenciaInfo, setLicenciaInfo] = useState(null);
 
@@ -34,6 +35,7 @@ export default function ProduccionIndividual() {
       if (!session) {
         router.push("/terminal");
       } else {
+        setSession(session);
         await cargarDatosSuscripcion(session.user.id);
         setVerificandoAcceso(false);
       }
@@ -71,7 +73,7 @@ export default function ProduccionIndividual() {
       setShowNoSubPopup(true);
       return false;
     }
-    if (consumidos >= limite) {
+    if (consumidos >= limite && limite > 0) {
       setShowNoCreditsPopup(true);
       return false;
     }
@@ -79,9 +81,16 @@ export default function ProduccionIndividual() {
   };
 
   const manejarSubida = async (e) => {
-    if (!e.target.files[0]) return;
+    const file = e.target.files[0];
+    if (!file) return;
 
     if (!verificarAcceso()) {
+      e.target.value = null;
+      return;
+    }
+
+    const confirmacion = window.confirm(`Agregaste el archivo "${file.name}".\n\n¿Deseas procesarlo y extraer los datos con Inteligencia Artificial?\nEsto consumirá 1 aviso de tu límite mensual.`);
+    if (!confirmacion) {
       e.target.value = null;
       return;
     }
@@ -92,11 +101,19 @@ export default function ProduccionIndividual() {
     const intervaloCarga = setInterval(() => { setMensajeCarga(mensajes[i]); i = (i + 1) % mensajes.length; }, 2000);
 
     const formData = new FormData();
-    formData.append("file", e.target.files[0]);
+    formData.append("file", file);
+    formData.append("user_id", session?.user?.id || "");
 
     try {
       const res = await fetch("https://actarium-yqof.onrender.com/extraer-datos", { method: "POST", body: formData });
       const data = await res.json();
+
+      if (data.error) {
+        alert(data.error);
+        clearInterval(intervaloCarga);
+        setCargando(false);
+        return;
+      }
 
       const avisosSanitizados = (data.avisos || []).map(aviso => ({
         ...aviso,
@@ -228,7 +245,7 @@ export default function ProduccionIndividual() {
         {paso === 1 ? (
           <div className="text-center mt-20 max-w-3xl mx-auto animate-in fade-in">
             <h2 className={`text-4xl font-serif ${textTitle} mb-4`}>Cargar Escritura</h2>
-            <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento de Word.</p>
+            <p className="text-gray-400 mb-10 text-lg">Inicie el proceso arrastrando el documento Word.</p>
             <div className={`${bgPanel} border-2 border-dashed p-24 rounded-2xl relative hover:border-[#D4AF37] transition-all`}>
               <input type="file" accept=".docx,.doc,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={manejarSubida} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
               <p className="text-gray-400 font-medium">Arrastre aquí el archivo .docx o .doc, o haga clic para seleccionar</p>
