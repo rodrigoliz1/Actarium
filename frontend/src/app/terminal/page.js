@@ -187,13 +187,14 @@ function TerminalContent() {
     else setMailMsg({ text: "Se ha enviado un enlace de confirmación a ambos correos. Por favor, revísalos para aplicar el cambio.", type: "success" });
   };
 
-  // Esta función ahora SÓLO restringe la recarga, pero permite que editar/descargar pasen de largo.
+  // VIGÍA ACTUALIZADO (Acepta 'activa' y 'usada')
   const verificarAcceso = (callback) => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
     const plan = licenciaInfo?.plan || 'Ninguno';
+    const estado = licenciaInfo?.estado;
 
-    if (plan === 'Ninguno' || licenciaInfo?.estado !== 'activa') {
+    if (plan === 'Ninguno' || (estado !== 'activa' && estado !== 'usada')) {
       setShowNoSubPopup(true);
       return false;
     }
@@ -206,19 +207,23 @@ function TerminalContent() {
   };
 
   const descargarArchivo = async (nombreArchivo) => {
-    if (!nombreArchivo) return alert("Sin archivo adjunto.");
-    const { data, error } = await supabase.storage.from('avisos_generados').download(nombreArchivo);
-    if (!error) {
-      const url = window.URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url; a.download = nombreArchivo; a.click();
-    } else alert("Error al descargar archivo.");
+    verificarAcceso(async () => {
+      if (!nombreArchivo) return alert("Sin archivo adjunto.");
+      const { data, error } = await supabase.storage.from('avisos_generados').download(nombreArchivo);
+      if (!error) {
+        const url = window.URL.createObjectURL(data);
+        const a = document.createElement("a");
+        a.href = url; a.download = nombreArchivo; a.click();
+      } else alert("Error al descargar archivo.");
+    });
   };
 
   const reEditar = (datosJsonStr) => {
-    if (!datosJsonStr) return alert("No hay datos guardados para este aviso.");
-    localStorage.setItem("aviso_editar", datosJsonStr);
-    router.push("/individual");
+    verificarAcceso(() => {
+      if (!datosJsonStr) return alert("No hay datos guardados para este aviso.");
+      localStorage.setItem("aviso_editar", datosJsonStr);
+      router.push("/individual");
+    });
   };
 
   const bgPrincipal = isDarkMode ? "bg-[#0A0F1D]" : "bg-[#FAFAFA]";

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -9,8 +9,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function ProduccionMasiva() {
+function ProduccionMasivaContent() {
   const router = useRouter();
+  const [session, setSession] = useState(null);
   const [verificandoAcceso, setVerificandoAcceso] = useState(true);
   const [licenciaInfo, setLicenciaInfo] = useState(null);
 
@@ -33,6 +34,7 @@ export default function ProduccionMasiva() {
       if (!session) {
         router.push("/terminal");
       } else {
+        setSession(session);
         await cargarDatosSuscripcion(session.user.id);
         setVerificandoAcceso(false);
       }
@@ -51,12 +53,14 @@ export default function ProduccionMasiva() {
     localStorage.setItem("darkMode", !isDarkMode);
   };
 
+  // VIGÍA ACTUALIZADO (Acepta 'activa' y 'usada')
   const verificarAcceso = () => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
     const plan = licenciaInfo?.plan || 'Ninguno';
+    const estado = licenciaInfo?.estado;
 
-    if (plan === 'Ninguno' || licenciaInfo?.estado !== 'activa') {
+    if (plan === 'Ninguno' || (estado !== 'activa' && estado !== 'usada')) {
       setShowNoSubPopup(true);
       return false;
     }
@@ -247,5 +251,13 @@ export default function ProduccionMasiva() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function ProduccionMasiva() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin"></div></div>}>
+      <ProduccionMasivaContent />
+    </Suspense>
   );
 }
