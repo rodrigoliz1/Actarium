@@ -308,9 +308,17 @@ function TerminalContent() {
           {vista === "otp" && (
             <form onSubmit={verificarOTP} className="space-y-4 text-center animate-in slide-in-from-right-4 fade-in">
               <h2 className="text-2xl font-serif text-[#0F172A] mb-2">Verifica tu Correo</h2>
-              <p className="text-gray-500 text-xs mb-6">Hemos enviado un código de seguridad de 6 dígitos a <b>{email}</b>. Ingrésalo para activar tu bóveda.</p>
+              <p className="text-gray-500 text-xs mb-6">Hemos enviado un código de seguridad a <b>{email}</b>. Ingrésalo para activar tu bóveda.</p>
 
-              <input type="text" required maxLength="6" value={otp} onChange={(e) => setOtp(e.target.value)} className="w-full p-4 border-2 border-gray-200 rounded-xl text-center font-mono text-2xl tracking-[0.5em] outline-none focus:border-[#D4AF37]" placeholder="000000" />
+              <input
+                type="text"
+                required
+                maxLength="8"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                className="w-full p-4 border-2 border-gray-200 rounded-xl text-center font-mono text-2xl tracking-[0.4em] outline-none focus:border-[#D4AF37]"
+                placeholder="00000000"
+              />
               {authMsg.text && <p className={`text-xs text-center font-medium ${authMsg.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{authMsg.text}</p>}
 
               <button type="submit" className="w-full bg-[#0F172A] text-[#D4AF37] py-4 rounded-xl font-bold tracking-widest hover:bg-[#D4AF37] hover:text-[#0F172A] transition-all shadow-lg">VERIFICAR CÓDIGO</button>
