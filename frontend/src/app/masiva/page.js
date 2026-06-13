@@ -22,6 +22,7 @@ function ProduccionMasivaContent() {
 
   const [showNoSubPopup, setShowNoSubPopup] = useState(false);
   const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -53,7 +54,6 @@ function ProduccionMasivaContent() {
     localStorage.setItem("darkMode", !isDarkMode);
   };
 
-  // VIGÍA ACTUALIZADO (Acepta 'activa' y 'usada')
   const verificarAcceso = () => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
@@ -94,14 +94,18 @@ function ProduccionMasivaContent() {
     setArchivos(archivos.filter((archivo) => archivo.name !== nombreArchivo));
   };
 
-  const enviarAlServidorMasivo = async () => {
+  const confirmarEnvioMasivo = () => {
     if (archivos.length === 0) return;
-
     if (!verificarAcceso()) return;
 
     const confirmacion = window.confirm(`¿Deseas procesar estas ${archivos.length} escrituras de forma masiva?\n\nEsto consumirá ${archivos.length} avisos de tu límite mensual.`);
     if (!confirmacion) return;
 
+    setShowFormatModal(true);
+  };
+
+  const enviarAlServidorMasivo = async (formatoExportacion) => {
+    setShowFormatModal(false);
     setProcesando(true);
 
     const mensajes = ["Escaneando lote de documentos...", "Extrayendo datos de múltiples escrituras...", "Estructurando paquetes zip en la nube...", "Asignando plantillas municipales por documento..."];
@@ -109,12 +113,11 @@ function ProduccionMasivaContent() {
     const intervaloCarga = setInterval(() => { setMensajeCarga(mensajes[i]); i = (i + 1) % mensajes.length; }, 2000);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       const formData = new FormData();
       archivos.forEach((archivo) => formData.append("archivos", archivo));
-      formData.append("user_id", user?.id || "");
+      formData.append("user_id", session?.user?.id || "");
       formData.append("fecha_cierre", fechaGlobal);
+      formData.append("formato", formatoExportacion);
 
       const respuesta = await fetch("https://actarium-yqof.onrender.com/procesar-masivo", {
         method: "POST", body: formData,
@@ -124,7 +127,7 @@ function ProduccionMasivaContent() {
         const blob = await respuesta.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url; a.download = "Paquete_Avisos_Actarium.zip";
+        a.href = url; a.download = `Paquete_Avisos_Actarium_${formatoExportacion.toUpperCase()}.zip`;
         document.body.appendChild(a); a.click(); a.remove();
 
         setArchivos([]); setFechaGlobal("");
@@ -151,7 +154,6 @@ function ProduccionMasivaContent() {
   return (
     <div className={`min-h-screen ${bgApp} font-sans pb-20 relative transition-colors duration-500`}>
 
-      {/* POP UP: NO SUBSCRIPTION */}
       {showNoSubPopup && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
           <div className={`${bgPanel} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-[#D4AF37]/30 relative`}>
@@ -167,7 +169,6 @@ function ProduccionMasivaContent() {
         </div>
       )}
 
-      {/* POP UP: NO CREDITS */}
       {showNoCreditsPopup && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
           <div className={`${bgPanel} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-red-500/30 relative`}>
@@ -177,6 +178,22 @@ function ProduccionMasivaContent() {
             <div className="space-y-3 flex gap-2">
               <button onClick={() => setShowNoCreditsPopup(false)} className="flex-1 border border-gray-600 text-gray-400 py-3 rounded-xl font-bold text-xs uppercase hover:bg-gray-800 hover:text-white transition-colors">Rechazar</button>
               <button onClick={() => router.push("/terminal?tab=cuenta&vista=tienda")} className="flex-1 bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Mejorar Plan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFormatModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
+          <div className={`${bgPanel} p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl border border-[#D4AF37]/30 relative`}>
+            <button onClick={() => setShowFormatModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <div className="w-16 h-16 bg-[#0F172A] rounded-full mx-auto flex items-center justify-center text-3xl mb-4 border border-[#D4AF37]">📥</div>
+            <h2 className={`text-xl font-serif ${textTitle} mb-2`}>Exportar Lote</h2>
+            <p className="text-xs text-gray-400 mb-6">Selecciona el formato que contendrá el archivo ZIP.</p>
+            <div className="space-y-3">
+              <button onClick={() => enviarAlServidorMasivo('docx')} className="w-full border border-[#D4AF37] text-[#D4AF37] py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-[#D4AF37] hover:text-[#0F172A] transition-colors">📄 WORD (.docx)</button>
+              <button onClick={() => enviarAlServidorMasivo('pdf')} className="w-full border border-red-500 text-red-500 py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-red-500 hover:text-white transition-colors">📕 PDF (.pdf)</button>
+              <button onClick={() => enviarAlServidorMasivo('ambos')} className="w-full bg-[#0F172A] text-white py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-gray-800 transition-colors shadow-lg border border-gray-700">📦 AMBOS FORMATOS</button>
             </div>
           </div>
         </div>
@@ -243,7 +260,7 @@ function ProduccionMasivaContent() {
             </div>
 
             <div className="text-center border-t border-gray-700/30 pt-8">
-              <button onClick={enviarAlServidorMasivo} disabled={procesando} className="bg-[#D4AF37] text-[#0F172A] px-12 py-4 rounded font-bold shadow-lg hover:bg-white transition-all w-full md:w-auto">
+              <button onClick={confirmarEnvioMasivo} disabled={procesando} className="bg-[#D4AF37] text-[#0F172A] px-12 py-4 rounded font-bold shadow-lg hover:bg-white transition-all w-full md:w-auto">
                 Generar {archivos.length} Avisos y Descargar ZIP
               </button>
             </div>

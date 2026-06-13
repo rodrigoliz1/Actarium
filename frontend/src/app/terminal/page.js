@@ -41,6 +41,9 @@ function TerminalContent() {
   const [showNoSubPopup, setShowNoSubPopup] = useState(false);
   const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
 
+  // ESTADO PARA EL POPUP DE DESCARGA EN LA BÓVEDA
+  const [showDownloadPopup, setShowDownloadPopup] = useState(null);
+
   useEffect(() => {
     const savedMode = localStorage.getItem("darkMode");
     if (savedMode === "true") setIsDarkMode(true);
@@ -110,9 +113,17 @@ function TerminalContent() {
     const regexPwd = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!regexPwd.test(password)) return setAuthMsg({ text: "Mínimo 8 caracteres, una mayúscula y un número.", type: "error" });
 
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { nombre_notaria: nombre } } });
-    if (error) setAuthMsg({ text: error.message, type: "error" });
-    else { setAuthMsg({ text: "Código enviado a tu correo.", type: "success" }); setVista("otp"); setTimer(45); }
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { nombre_notaria: nombre } } });
+
+    if (error) {
+      setAuthMsg({ text: error.message, type: "error" });
+    } else if (data?.user?.identities != null && data.user.identities.length === 0) {
+      setAuthMsg({ text: "Este correo ya se encuentra registrado en otra bóveda.", type: "error" });
+    } else {
+      setAuthMsg({ text: "Código enviado a tu correo.", type: "success" });
+      setVista("otp");
+      setTimer(45);
+    }
   };
 
   const reenviarCodigo = async () => {
@@ -187,7 +198,6 @@ function TerminalContent() {
     else setMailMsg({ text: "Se ha enviado un enlace de confirmación a ambos correos. Por favor, revísalos para aplicar el cambio.", type: "success" });
   };
 
-  // VIGÍA ACTUALIZADO (Acepta 'activa' y 'usada')
   const verificarAcceso = (callback) => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
@@ -206,16 +216,31 @@ function TerminalContent() {
     return true;
   };
 
-  const descargarArchivo = async (nombreArchivo) => {
-    verificarAcceso(async () => {
-      if (!nombreArchivo) return alert("Sin archivo adjunto.");
-      const { data, error } = await supabase.storage.from('avisos_generados').download(nombreArchivo);
-      if (!error) {
-        const url = window.URL.createObjectURL(data);
-        const a = document.createElement("a");
-        a.href = url; a.download = nombreArchivo; a.click();
-      } else alert("Error al descargar archivo.");
-    });
+  // SISTEMA DE DESCARGA DESDE LA BÓVEDA
+  const procesarDescargaBoveda = async (formato) => {
+    const baseName = showDownloadPopup.archivo; // Ej: ATP_123_ZAP_1234_1.docx
+    const pdfName = baseName.replace(".docx", ".pdf");
+
+    setShowDownloadPopup(null);
+
+    if (formato === 'docx' || formato === 'ambos') {
+      await ejecutarFirmaDescarga(baseName);
+    }
+    if (formato === 'pdf' || formato === 'ambos') {
+      await ejecutarFirmaDescarga(pdfName);
+    }
+  };
+
+  const ejecutarFirmaDescarga = async (nombre) => {
+    const { data, error } = await supabase.storage.from('avisos_generados').download(nombre);
+    if (!error) {
+      const url = window.URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url; a.download = nombre.replace(/_\d{6}_/, "_");
+      a.click();
+    } else {
+      alert(`Error al buscar ${nombre}. Puede que no se haya generado en ese formato.`);
+    }
   };
 
   const reEditar = (datosJsonStr) => {
@@ -331,7 +356,6 @@ function TerminalContent() {
   return (
     <div className={`min-h-screen ${bgPrincipal} ${textPrincipal} font-sans pb-20 transition-colors duration-500 relative`}>
 
-      {/* POP UPS GLOBALES */}
       {showNoSubPopup && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
           <div className={`${bgCard} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-[#D4AF37]/30 relative`}>
@@ -357,6 +381,23 @@ function TerminalContent() {
             <div className="space-y-3 flex gap-2">
               <button onClick={() => setShowNoCreditsPopup(false)} className="flex-1 border border-gray-600 text-gray-400 py-3 rounded-xl font-bold text-xs uppercase hover:bg-gray-800 transition-colors">Rechazar</button>
               <button onClick={() => { setShowNoCreditsPopup(false); setPestanaActiva("cuenta"); setVista("tienda"); }} className="flex-1 bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Mejorar Plan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE DESCARGA EN BÓVEDA */}
+      {showDownloadPopup && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
+          <div className={`${bgCard} p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl border border-[#D4AF37]/30 relative`}>
+            <button onClick={() => setShowDownloadPopup(null)} className="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <div className="w-16 h-16 bg-[#0F172A] rounded-full mx-auto flex items-center justify-center text-3xl mb-4 border border-[#D4AF37]">📥</div>
+            <h2 className={`text-xl font-serif ${textTitulo} mb-2`}>Descargar Aviso</h2>
+            <p className="text-xs text-gray-400 mb-6">Selecciona el formato en el que deseas recuperar este archivo desde tu bóveda.</p>
+            <div className="space-y-3">
+              <button onClick={() => procesarDescargaBoveda('docx')} className="w-full border border-[#D4AF37] text-[#D4AF37] py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-[#D4AF37] hover:text-[#0F172A] transition-colors">📄 WORD (.docx)</button>
+              <button onClick={() => procesarDescargaBoveda('pdf')} className="w-full border border-red-500 text-red-500 py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-red-500 hover:text-white transition-colors">📕 PDF (.pdf)</button>
+              <button onClick={() => procesarDescargaBoveda('ambos')} className="w-full bg-[#0F172A] text-white py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-gray-800 transition-colors shadow-lg border border-gray-700">📦 AMBOS FORMATOS</button>
             </div>
           </div>
         </div>
@@ -428,7 +469,7 @@ function TerminalContent() {
                         <td className="p-4 truncate max-w-[200px]" title={fila.vendedor}>{fila.vendedor}</td>
                         <td className="p-4 flex items-center justify-center gap-2">
                           <button onClick={() => reEditar(fila.datos_json)} className="bg-gray-50 border border-gray-300 text-gray-700 hover:bg-gray-800 hover:text-white px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-all">✏️ Editar</button>
-                          <button onClick={() => descargarArchivo(fila.archivo)} className="bg-[#FEFCE8] text-[#A16207] border border-[#FEF08A] hover:bg-[#D4AF37] hover:text-[#0F172A] px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-all">📥 Descargar</button>
+                          <button onClick={() => setShowDownloadPopup(fila)} className="bg-[#FEFCE8] text-[#A16207] border border-[#FEF08A] hover:bg-[#D4AF37] hover:text-[#0F172A] px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-all">📥 Descargar</button>
                         </td>
                       </tr>
                     ))

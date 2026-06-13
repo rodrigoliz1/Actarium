@@ -23,6 +23,7 @@ function ProduccionIndividualContent() {
 
   const [showNoSubPopup, setShowNoSubPopup] = useState(false);
   const [showNoCreditsPopup, setShowNoCreditsPopup] = useState(false);
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -64,7 +65,6 @@ function ProduccionIndividualContent() {
     localStorage.setItem("darkMode", !isDarkMode);
   };
 
-  // VIGÍA ACTUALIZADO (Acepta 'activa' y 'usada')
   const verificarAcceso = () => {
     const consumidos = licenciaInfo?.usos_mes || 0;
     const limite = licenciaInfo?.limite_mensual || 0;
@@ -151,24 +151,34 @@ function ProduccionIndividualContent() {
     setAvisos(nuevosAvisos);
   };
 
-  const descargar = async () => {
+  // NUEVA FUNCIÓN PARA EJECUTAR LA DESCARGA CON EL FORMATO ELEGIDO
+  const ejecutarGeneracionFinal = async (formatoExportacion) => {
+    setShowFormatModal(false);
     setCargando(true);
-    setMensajeCarga("Generando documento oficial en la nube...");
+    setMensajeCarga(`Exportando en formato ${formatoExportacion.toUpperCase()}...`);
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const payload = { avisos, user_id: user?.id };
+      const payload = { avisos, user_id: session?.user?.id, formato: formatoExportacion };
       const res = await fetch("https://actarium-yqof.onrender.com/generar-final", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const respuestaBackend = await res.json();
 
       if (respuestaBackend.success) {
-        const { data, error } = await supabase.storage.from('avisos_generados').download(respuestaBackend.archivo);
-        if (!error) {
-          const url = window.URL.createObjectURL(data);
-          const a = document.createElement("a");
-          a.href = url; a.download = respuestaBackend.nombre_descarga; a.click();
-          setTimeout(() => { window.location.href = "/terminal"; }, 2000);
-        } else alert("Error al descargar el archivo desde la bóveda.");
-      } else alert(respuestaBackend.error || "Hubo un error al generar el archivo final.");
+        // Puede retornar 1 o 2 archivos
+        for (const nombreArchivo of respuestaBackend.archivos) {
+          const { data, error } = await supabase.storage.from('avisos_generados').download(nombreArchivo);
+          if (!error) {
+            const url = window.URL.createObjectURL(data);
+            const a = document.createElement("a");
+            a.href = url; a.download = nombreArchivo.replace(/_\d{6}_/, "_"); // Limpia el nombre
+            a.click();
+          } else {
+            alert(`No se pudo descargar: ${nombreArchivo}.`);
+          }
+        }
+        setTimeout(() => { window.location.href = "/terminal"; }, 3000);
+      } else {
+        alert(respuestaBackend.error || "Hubo un error al generar el archivo final.");
+      }
     } catch (err) { alert("Error al conectar con el servidor."); }
     setCargando(false);
   };
@@ -189,7 +199,6 @@ function ProduccionIndividualContent() {
   return (
     <div className={`min-h-screen ${bgApp} transition-colors duration-500 pb-20 relative`}>
 
-      {/* POP UP: NO SUBSCRIPTION */}
       {showNoSubPopup && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
           <div className={`${bgPanel} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-[#D4AF37]/30 relative`}>
@@ -205,7 +214,6 @@ function ProduccionIndividualContent() {
         </div>
       )}
 
-      {/* POP UP: NO CREDITS */}
       {showNoCreditsPopup && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
           <div className={`${bgPanel} p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border border-red-500/30 relative`}>
@@ -215,6 +223,23 @@ function ProduccionIndividualContent() {
             <div className="space-y-3 flex gap-2">
               <button onClick={() => setShowNoCreditsPopup(false)} className="flex-1 border border-gray-600 text-gray-400 py-3 rounded-xl font-bold text-xs uppercase hover:bg-gray-800 hover:text-white transition-colors">Rechazar</button>
               <button onClick={() => router.push("/terminal?tab=cuenta&vista=tienda")} className="flex-1 bg-[#D4AF37] text-[#0F172A] py-3 rounded-xl font-bold text-xs tracking-widest shadow-lg hover:scale-105 transition-transform">Mejorar Plan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE FORMATOS DE DESCARGA */}
+      {showFormatModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in backdrop-blur-sm">
+          <div className={`${bgPanel} p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl border border-[#D4AF37]/30 relative`}>
+            <button onClick={() => setShowFormatModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+            <div className="w-16 h-16 bg-[#0F172A] rounded-full mx-auto flex items-center justify-center text-3xl mb-4 border border-[#D4AF37]">📥</div>
+            <h2 className={`text-xl font-serif ${textTitle} mb-2`}>Exportar Documento</h2>
+            <p className="text-xs text-gray-400 mb-6">Selecciona el formato en el que deseas descargar tus avisos oficiales.</p>
+            <div className="space-y-3">
+              <button onClick={() => ejecutarGeneracionFinal('docx')} className="w-full border border-[#D4AF37] text-[#D4AF37] py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-[#D4AF37] hover:text-[#0F172A] transition-colors">📄 WORD (.docx)</button>
+              <button onClick={() => ejecutarGeneracionFinal('pdf')} className="w-full border border-red-500 text-red-500 py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-red-500 hover:text-white transition-colors">📕 PDF (.pdf)</button>
+              <button onClick={() => ejecutarGeneracionFinal('ambos')} className="w-full bg-[#0F172A] text-white py-3 rounded-xl font-bold tracking-widest text-xs hover:bg-gray-800 transition-colors shadow-lg border border-gray-700">📦 AMBOS FORMATOS</button>
             </div>
           </div>
         </div>
@@ -260,7 +285,7 @@ function ProduccionIndividualContent() {
                 <h2 className={`text-3xl font-serif ${textTitle} mb-2`}>Auditoría Integral ({avisos.length} Avisos)</h2>
                 <p className={`text-sm ${textLabel}`}>Valide la información extraída. Si es una subdivisión, verá múltiples paneles abajo.</p>
               </div>
-              <button onClick={descargar} className="bg-[#D4AF37] text-[#0F172A] px-8 py-3 rounded font-bold shadow-lg hover:bg-white transition-all">
+              <button onClick={() => setShowFormatModal(true)} className="bg-[#D4AF37] text-[#0F172A] px-8 py-3 rounded font-bold shadow-lg hover:bg-white transition-all">
                 Generar Archivo Oficial
               </button>
             </header>

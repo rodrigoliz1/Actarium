@@ -8,6 +8,7 @@ import json
 import zipfile
 import unicodedata
 import re
+import subprocess
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -33,14 +34,27 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 # --- LLAVES DE STRIPE ---
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-
-# IDs de los precios en Stripe
 PRICE_ORO = os.environ.get("STRIPE_PRICE_ORO", "")
 PRICE_PLATINO = os.environ.get("STRIPE_PRICE_PLATINO", "")
 PRICE_BLACK = os.environ.get("STRIPE_PRICE_BLACK", "")
 
 ia_client = OpenAI(api_key=OPENAI_API_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# --- MOTOR DE CONVERSIÓN A PDF ---
+def docx_a_pdf(docx_path: str, pdf_path: str):
+    try:
+        # Intento nativo para Linux (Render) o donde libreoffice esté en el PATH
+        subprocess.run(['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir', os.path.dirname(pdf_path) or '.', docx_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        try:
+            # Intento de respaldo para macOS (Entorno local)
+            subprocess.run(['/Applications/LibreOffice.app/Contents/MacOS/soffice', '--headless', '--convert-to', 'pdf', '--outdir', os.path.dirname(pdf_path) or '.', docx_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"Error de conversión PDF: {e}")
+            # Mock de seguridad en caso de que LibreOffice no esté instalado en el servidor
+            with open(pdf_path, "w") as f:
+                f.write("ERROR: Para generar PDFs, el servidor debe tener LibreOffice instalado.")
 
 # --- FUNCIONES BASE ---
 def limpiar_texto(texto: str) -> str:
@@ -109,96 +123,59 @@ REGLAS DE ORO INQUEBRANTABLES (PROHIBIDO RESUMIR O INVENTAR):
 8. SUBDIVISIONES: Un objeto en 'avisos' POR CADA INMUEBLE.
 9. 'se_anexa': 'Deslinde', 'Avalúo Bancario', 'Certificado de No Propiedad', 'Certificado de no Adeudo' o 'Ninguno'."""
 
-# --- RUTAS DE STRIPE ---
 @app.post("/create-checkout-session")
 async def create_checkout_session(payload: dict):
     plan = payload.get("plan")
     user_id = payload.get("user_id")
     email = payload.get("email")
-
-    mapa_precios = {
-        "Oro": PRICE_ORO,
-        "Platino": PRICE_PLATINO,
-        "Black": PRICE_BLACK
-    }
-    
+    mapa_precios = { "Oro": PRICE_ORO, "Platino": PRICE_PLATINO, "Black": PRICE_BLACK }
     price_id = mapa_precios.get(plan)
-    if not price_id:
-        return {"success": False, "error": "Plan no válido o en configuración."}
-
+    if not price_id: return {"success": False, "error": "Plan no válido o en configuración."}
     try:
         session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{'price': price_id, 'quantity': 1}],
-            mode='subscription',
-            success_url="https://actarium.mx/terminal?pago=exito",
-            cancel_url="https://actarium.mx/terminal?pago=cancelado",
-            customer_email=email,
-            client_reference_id=user_id,
+            payment_method_types=['card'], line_items=[{'price': price_id, 'quantity': 1}], mode='subscription',
+            success_url="https://actarium.mx/terminal?pago=exito", cancel_url="https://actarium.mx/terminal?pago=cancelado",
+            customer_email=email, client_reference_id=user_id,
         )
         return {"success": True, "url": session.url}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except Exception as e: return {"success": False, "error": str(e)}
 
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
-
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
+    try: event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         user_id = session.get("client_reference_id")
-        
         if user_id:
             renovacion = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-            supabase.table("licencias").update({
-                "usos_mes": 0,
-                "estado": "activa",
-                "fecha_renovacion": renovacion
-            }).eq("usada_por", user_id).execute()
-
+            supabase.table("licencias").update({ "usos_mes": 0, "estado": "activa", "fecha_renovacion": renovacion }).eq("usada_por", user_id).execute()
     return {"status": "success"}
 
-# --- RUTAS DE EXTRACCIÓN Y GENERACIÓN (NUEVA LÓGICA DE CRÉDITOS) ---
 @app.post("/extraer-datos")
 async def extraer_datos(file: UploadFile = File(...), user_id: Optional[str] = Form(None)):
-    # 1. VERIFICACIÓN Y COBRO ANTES DE USAR LA INTELIGENCIA ARTIFICIAL
     if user_id:
         usos, limite = obtener_uso_y_limite(user_id)
-        if usos >= limite:
-            return {"error": f"Límite de plan alcanzado ({usos}/{limite} Avisos). Adquiere o mejora tu plan."}
-
-    # 2. EXTRACCIÓN
+        if usos >= limite: return {"error": f"Límite de plan alcanzado ({usos}/{limite} Avisos). Adquiere o mejora tu plan."}
     ruta_temporal = f"temp_{file.filename}"
     with open(ruta_temporal, "wb") as buffer: buffer.write(await file.read())
     texto_optimizado = re.sub(r'\s+', ' ', extraer_texto_documento(ruta_temporal)).strip()
     os.remove(ruta_temporal)
-    
-    respuesta = ia_client.chat.completions.create(
-        model="gpt-4o-mini", response_format={ "type": "json_object" },
-        messages=[{"role": "system", "content": PROMPT_SISTEMA}, {"role": "user", "content": texto_optimizado}]
-    )
+    respuesta = ia_client.chat.completions.create(model="gpt-4o-mini", response_format={ "type": "json_object" }, messages=[{"role": "system", "content": PROMPT_SISTEMA}, {"role": "user", "content": texto_optimizado}])
     datos_ia = json.loads(respuesta.choices[0].message.content)
     for aviso in datos_ia.get("avisos", []):
         if not aviso.get("total_liquidacion"): aviso["total_liquidacion"] = aviso.get("impuesto_monto", "")
-
-    # 3. SE CONSUME EL CRÉDITO
-    if user_id:
-        actualizar_uso(user_id, usos, 1)
-
+    if user_id: actualizar_uso(user_id, usos, 1)
     return datos_ia
 
 @app.post("/generar-final")
 async def generar_final(payload: dict):
     avisos = payload.get("avisos", [])
     user_id = payload.get("user_id", "")
+    formato = payload.get("formato", "ambos") # docs, pdf, ambos
     
-    # ¡LA GENERACIÓN AHORA ES LIBRE Y NO COBRA CRÉDITOS!
     archivos_generados = []
     timestamp = datetime.now().strftime("%H%M%S")
     for idx, aviso in enumerate(avisos):
@@ -226,33 +203,56 @@ async def generar_final(payload: dict):
         
         num_escritura = limpiar_nombre_archivo(aviso.get('escritura_numero', 'SN'))
         nombre_oficial = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.docx"
+        nombre_oficial_pdf = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.pdf"
+        
         nombre_unico = f"ATP_{num_escritura}_{mun_limpio}_{timestamp}_{idx+1}.docx" 
+        nombre_unico_pdf = f"ATP_{num_escritura}_{mun_limpio}_{timestamp}_{idx+1}.pdf" 
+        
         ruta_local = f"temp_{nombre_unico}"
+        ruta_pdf = f"temp_{nombre_unico_pdf}"
+        
         doc.save(ruta_local)
-        archivos_generados.append({"ruta_local": ruta_local, "nombre_unico": nombre_unico, "nombre_oficial": nombre_oficial, "aviso_data": aviso})
+        docx_a_pdf(ruta_local, ruta_pdf)
+        
+        # Subimos SIEMPRE ambos a la bóveda
+        with open(ruta_local, "rb") as f: supabase.storage.from_("avisos_generados").upload(nombre_unico, f)
+        if os.path.exists(ruta_pdf):
+            with open(ruta_pdf, "rb") as f: supabase.storage.from_("avisos_generados").upload(nombre_unico_pdf, f)
+            
+        if user_id: 
+            supabase.table("historial").insert({"user_id": user_id, "escritura": str(num_escritura), "acto": aviso.get("naturaleza_acto", "-"), "vendedor": aviso.get("nombre_vendedor", "-"), "comprador": aviso.get("nombre_comprador", "-"), "archivo": nombre_unico, "datos_json": json.dumps(aviso)}).execute()
+        
+        archivos_generados.append({"ruta_local": ruta_local, "ruta_pdf": ruta_pdf, "nombre_unico": nombre_unico, "nombre_unico_pdf": nombre_unico_pdf, "nombre_oficial": nombre_oficial, "nombre_oficial_pdf": nombre_oficial_pdf})
 
+    # Si es solo 1 aviso, devolvemos un array con los nombres de archivo a descargar
     if len(archivos_generados) == 1:
-        archivo_data = archivos_generados[0]
-        with open(archivo_data["ruta_local"], "rb") as f: supabase.storage.from_("avisos_generados").upload(archivo_data["nombre_unico"], f)
-        if user_id: supabase.table("historial").insert({"user_id": user_id, "escritura": str(archivo_data["aviso_data"].get('escritura_numero', 'SN')), "acto": archivo_data["aviso_data"].get("naturaleza_acto", "-"), "vendedor": archivo_data["aviso_data"].get("nombre_vendedor", "-"), "comprador": archivo_data["aviso_data"].get("nombre_comprador", "-"), "archivo": archivo_data["nombre_unico"], "datos_json": json.dumps(archivo_data["aviso_data"])}).execute()
-        os.remove(archivo_data["ruta_local"])
-        return {"success": True, "archivo": archivo_data["nombre_unico"], "nombre_descarga": archivo_data["nombre_oficial"]}
+        arch = archivos_generados[0]
+        archivos_a_devolver = []
+        if formato in ["docx", "ambos"]: archivos_a_devolver.append(arch["nombre_unico"])
+        if formato in ["pdf", "ambos"]: archivos_a_devolver.append(arch["nombre_unico_pdf"])
+        
+        if os.path.exists(arch["ruta_local"]): os.remove(arch["ruta_local"])
+        if os.path.exists(arch["ruta_pdf"]): os.remove(arch["ruta_pdf"])
+        
+        return {"success": True, "tipo": "individual", "archivos": archivos_a_devolver}
     else:
+        # Si es subdivisión múltiple, armamos un ZIP solo con los formatos solicitados
         num_escritura_zip = limpiar_nombre_archivo(avisos[0].get('escritura_numero', 'SN'))
         nombre_zip_nube = f"Avisos_Subdivision_{num_escritura_zip}_{timestamp}.zip"
         with zipfile.ZipFile(nombre_zip_nube, 'w') as zipf:
             for arch in archivos_generados:
-                zipf.write(arch["ruta_local"], arcname=arch["nombre_oficial"])
-                with open(arch["ruta_local"], "rb") as f: supabase.storage.from_("avisos_generados").upload(arch["nombre_unico"], f)
-                if user_id: supabase.table("historial").insert({"user_id": user_id, "escritura": str(arch["aviso_data"].get('escritura_numero', 'SN')), "acto": arch["aviso_data"].get("naturaleza_acto", "-"), "vendedor": arch["aviso_data"].get("nombre_vendedor", "-"), "comprador": arch["aviso_data"].get("nombre_comprador", "-"), "archivo": arch["nombre_unico"], "datos_json": json.dumps(arch["aviso_data"])}).execute()
-                os.remove(arch["ruta_local"])
+                if formato in ["docx", "ambos"]: zipf.write(arch["ruta_local"], arcname=f"DOCX/{arch['nombre_oficial']}")
+                if formato in ["pdf", "ambos"] and os.path.exists(arch["ruta_pdf"]): zipf.write(arch["ruta_pdf"], arcname=f"PDF/{arch['nombre_oficial_pdf']}")
+                
+                if os.path.exists(arch["ruta_local"]): os.remove(arch["ruta_local"])
+                if os.path.exists(arch["ruta_pdf"]): os.remove(arch["ruta_pdf"])
+                
         with open(nombre_zip_nube, "rb") as f: supabase.storage.from_("avisos_generados").upload(nombre_zip_nube, f)
         os.remove(nombre_zip_nube)
-        return {"success": True, "archivo": nombre_zip_nube, "nombre_descarga": f"Avisos_Subdivision_{num_escritura_zip}.zip"}
+        return {"success": True, "tipo": "zip", "archivos": [nombre_zip_nube]}
 
 @app.post("/procesar-masivo")
-async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optional[str] = Form(None), fecha_cierre: Optional[str] = Form("")):
-    # 1. VERIFICACIÓN Y COBRO ANTES DE USAR LA INTELIGENCIA ARTIFICIAL EN LOTE
+async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optional[str] = Form(None), fecha_cierre: Optional[str] = Form(""), formato: Optional[str] = Form("ambos")):
     if user_id:
         usos, limite = obtener_uso_y_limite(user_id)
         if usos >= limite: raise HTTPException(status_code=403, detail=f"Límite de plan alcanzado ({usos}/{limite} Avisos). Adquiere o mejora tu plan.")
@@ -303,17 +303,31 @@ async def procesar_masivo(archivos: List[UploadFile] = File(...), user_id: Optio
                 
                 num_escritura = limpiar_nombre_archivo(aviso_ia.get('escritura_numero', 'SN'))
                 nombre_limpio = limpiar_nombre_archivo(archivo.filename.replace(".docx", "").replace(".doc", ""))
+                
                 nombre_archivo_final = f"ATP_{num_escritura}_{mun_limpio}_{idx+1}.docx" if len(datos_ia.get("avisos", [])) > 1 else f"ATP_{num_escritura}_{mun_limpio}.docx"
+                nombre_archivo_final_pdf = nombre_archivo_final.replace(".docx", ".pdf")
                 
                 nombre_unico_nube = f"ATP_{num_escritura}_{mun_limpio}_{datetime.now().strftime('%H%M%S')}_{idx+1}.docx"
+                nombre_unico_nube_pdf = nombre_unico_nube.replace(".docx", ".pdf")
+                
                 ruta_local = f"temp_{nombre_unico_nube}"
+                ruta_pdf = f"temp_{nombre_unico_nube_pdf}"
+                
                 doc.save(ruta_local)
+                docx_a_pdf(ruta_local, ruta_pdf)
                 
                 with open(ruta_local, "rb") as f: supabase.storage.from_("avisos_generados").upload(nombre_unico_nube, f)
+                if os.path.exists(ruta_pdf):
+                    with open(ruta_pdf, "rb") as f: supabase.storage.from_("avisos_generados").upload(nombre_unico_nube_pdf, f)
+                
                 if user_id: supabase.table("historial").insert({"user_id": user_id, "escritura": str(num_escritura), "acto": aviso_ia.get("naturaleza_acto", "-"), "vendedor": aviso_ia.get("nombre_vendedor", "-"), "comprador": aviso_ia.get("nombre_comprador", "-"), "archivo": nombre_unico_nube, "datos_json": json.dumps(aviso_ia)}).execute()
-                zipf.write(ruta_local, arcname=f"{mun_limpio}/{nombre_limpio}/{nombre_archivo_final}")
-                os.remove(ruta_local)
+                
+                # Escribimos en el ZIP local según lo elegido
+                if formato in ["docx", "ambos"]: zipf.write(ruta_local, arcname=f"{mun_limpio}/{nombre_limpio}/DOCX/{nombre_archivo_final}")
+                if formato in ["pdf", "ambos"] and os.path.exists(ruta_pdf): zipf.write(ruta_pdf, arcname=f"{mun_limpio}/{nombre_limpio}/PDF/{nombre_archivo_final_pdf}")
+                
+                if os.path.exists(ruta_local): os.remove(ruta_local)
+                if os.path.exists(ruta_pdf): os.remove(ruta_pdf)
 
-    # SE COBRAN LOS CRÉDITOS MASIVOS AL FINALIZAR
     if user_id and total_avisos_generados > 0: actualizar_uso(user_id, usos, total_avisos_generados)
     return FileResponse(nombre_zip, filename=nombre_zip, media_type="application/zip")
