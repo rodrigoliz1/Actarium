@@ -91,7 +91,7 @@ function ProduccionIndividualContent() {
       return;
     }
 
-    const confirmacion = window.confirm(`Agregaste el archivo "${file.name}".\n\n¿Deseas procesarlo y extraer los datos con Inteligencia Artificial?\nEsto consumirá 1 aviso de tu límite mensual.`);
+    const confirmacion = window.confirm(`Agregaste el archivo "${file.name}".\n\n¿Deseas procesarlo y extraer los datos con Actarium?\nEsto consumirá 1 aviso de tu límite mensual.`);
     if (!confirmacion) {
       e.target.value = null;
       return;

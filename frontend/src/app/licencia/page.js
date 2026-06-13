@@ -61,7 +61,7 @@ export default function AcuerdoLicencia() {
         <section className="space-y-4">
           <h2 className="text-2xl font-serif text-[#0F172A] border-l-4 border-[#D4AF37] pl-4">4. Propiedad Intelectual</h2>
           <p>
-            Usted reconoce que todos los derechos de propiedad intelectual sobre el software Actarium, incluyendo sus algoritmos de IA, la interfaz gráfica, el diseño de la base de datos y las marcas asociadas, pertenecen exclusivamente a <strong>Rodrigo Lizárraga Developing</strong>. El uso del software no le otorga ningún derecho de propiedad sobre el mismo.
+            Usted reconoce que todos los derechos de propiedad intelectual sobre el software Actarium, incluyendo sus algoritmos de , la interfaz gráfica, el diseño de la base de datos y las marcas asociadas, pertenecen exclusivamente a <strong>Rodrigo Lizárraga Developing</strong>. El uso del software no le otorga ningún derecho de propiedad sobre el mismo.
           </p>
         </section>
 

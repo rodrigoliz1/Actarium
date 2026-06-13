@@ -5,7 +5,7 @@ import Link from "next/link";
 export default function PoliticaSeguridad() {
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-[#1E293B] font-sans selection:bg-[#D4AF37] selection:text-[#0F172A]">
-      
+
       <nav className="w-full bg-white border-b border-gray-100 px-6 py-5 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-4 cursor-pointer">
           <img src="/logo.png" alt="Logo Actarium" className="w-8 h-8 object-contain drop-shadow-sm" />
@@ -23,14 +23,14 @@ export default function PoliticaSeguridad() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-16 text-gray-600 leading-relaxed space-y-10">
-        
+
         <section className="text-center mb-12">
           <div className="text-6xl mb-6">🛡️</div>
           <p className="text-xl text-[#0F172A] font-serif">En Actarium sabemos que el secreto profesional es la esencia de la función notarial. Por ello, nuestra arquitectura se construyó priorizando la invulnerabilidad de sus documentos.</p>
         </section>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          
+
           <div className="p-8 border border-gray-200 rounded-3xl bg-white shadow-sm hover:shadow-lg transition-shadow">
             <h3 className="text-xl font-bold text-[#D4AF37] uppercase tracking-widest mb-4">Encriptación End-to-End</h3>
             <p className="text-sm">
@@ -46,7 +46,7 @@ export default function PoliticaSeguridad() {
           </div>
 
           <div className="md:col-span-2 p-8 border border-gray-200 rounded-3xl bg-[#0F172A] text-white shadow-xl">
-            <h3 className="text-xl font-bold text-[#D4AF37] uppercase tracking-widest mb-4">Manejo de IA (Zero Data Retention)</h3>
+            <h3 className="text-xl font-bold text-[#D4AF37] uppercase tracking-widest mb-4">Acat (Zero Data Retention)</h3>
             <p className="text-sm text-gray-300">
               Actarium es socio tecnológico de OpenAI (Enterprise API). Esto significa que las escrituras enviadas para su análisis están amparadas por un contrato que garantiza que <strong>OpenAI NO utilizará los datos de la notaría, ni los nombres, ni los montos para entrenar o mejorar sus modelos de inteligencia artificial</strong>. Los documentos se procesan en memoria (RAM) y se descartan inmediatamente después de extraer la información requerida.
             </p>

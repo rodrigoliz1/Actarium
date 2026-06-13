@@ -15,7 +15,7 @@ export default function LandingPage() {
 
         <div className="hidden lg:flex gap-10 text-[11px] font-bold uppercase tracking-[0.2em] text-gray-500">
           <a href="#plataforma" className="hover:text-[#D4AF37] transition-colors duration-300">Plataforma</a>
-          <a href="#inteligencia" className="hover:text-[#D4AF37] transition-colors duration-300">Actarium AI</a>
+          <a href="#inteligencia" className="hover:text-[#D4AF37] transition-colors duration-300">Actarium</a>
           <a href="#flujo" className="hover:text-[#D4AF37] transition-colors duration-300">Cómo Funciona</a>
           <Link href="/pricing" className="hover:text-[#D4AF37] transition-colors duration-300">Licencias</Link>
         </div>
@@ -148,7 +148,7 @@ export default function LandingPage() {
 
             <div className="relative flex flex-col items-center">
               <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-[#0F172A] border border-[#0F172A] flex items-center justify-center text-xl md:text-2xl font-serif text-[#D4AF37] mb-6 md:mb-8 z-10 shadow-xl scale-110">2</div>
-              <h4 className="text-lg md:text-xl font-bold text-[#0F172A] mb-2 md:mb-3">Actarium IA Extrae</h4>
+              <h4 className="text-lg md:text-xl font-bold text-[#0F172A] mb-2 md:mb-3">Actarium Extrae</h4>
               <p className="text-sm md:text-base text-gray-500 font-light leading-relaxed">El motor analiza partes, inmuebles, valores y antecedentes, rellenando el formato oficial en 4 segundos.</p>
             </div>
 
@@ -198,7 +198,7 @@ export default function LandingPage() {
               <ul className="space-y-3 md:space-y-4 text-xs md:text-sm font-light text-gray-400">
                 <li><Link href="/terminal" className="hover:text-[#D4AF37] transition-colors">Iniciar Sesión</Link></li>
                 <li><Link href="/pricing" className="hover:text-[#D4AF37] transition-colors">Comprar Licencia</Link></li>
-                <li><a href="#inteligencia" className="hover:text-[#D4AF37] transition-colors">Tecnología IA</a></li>
+                <li><a href="#inteligencia" className="hover:text-[#D4AF37] transition-colors">Tecnología Actarium</a></li>
                 <li><a href="#flujo" className="hover:text-[#D4AF37] transition-colors">Flujo de Trabajo</a></li>
               </ul>
             </div>
